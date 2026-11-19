@@ -2,6 +2,8 @@
 
 Snapshot sesi kerja **19 November 2026, WIB**. Dokumen ini menyatukan konteks yang diperlukan untuk meneruskan implementasi di chat AI lain. Jalur file di bawah relatif terhadap root repo.
 
+Pemilih karakter kini mencakup 30 avatar dan audio Indonesia–Inggris per karakter. Laras dan Satria tampil sebagai pilihan utama. Panduan pemilih, aset suara, dan konfigurasi live yang berlaku ada di [Suara karakter NARA](docs/SUARA-KARAKTER.md). Bagian berikut mencatat konteks implementasi sebelum pembaruan ini.
+
 ## Instruksi singkat untuk chat penerus
 
 > Lanjutkan proyek NARA dari repo `https://github.com/jejow/nara-xr`. Baca `README.md` dan `HANDOFF.md`, buka scene `NARA/Assets/FinalProject/Scenes/NaraSeminar.unity`, dan cek versi terbaru sebelum mengubahnya. Pertahankan alur presentasi tiga menit, pemberian giliran saat audiens angkat tangan, pilihan avatar per kursi, dan dukungan laptop serta XR. Ikuti batas pengujian yang tercatat di sini saat menjelaskan hasil.

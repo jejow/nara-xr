@@ -27,7 +27,10 @@ namespace Nara.Practice
             yield return new WaitForSecondsRealtime(.5f);
             if (!Check(app.sceneTriangles > 0 && app.sceneTriangles <= 150000 && app.Deck.Slides.Count > 0, "scene and deck"))
                 yield break;
-            if (!Check(app.audience.Profiles.Length == 24 && app.audience.HeadAt(0), "24 avatar choices with a seated questioner"))
+            if (!Check(app.audience.Profiles.Length == AvatarCatalog.ProfileCount && app.audience.HeadAt(NaraAudience.LeadSeat),
+                "30 avatar choices with a seated lead"))
+                yield break;
+            if (!Check(CheckVoiceBank(), "all 30 characters have their own 14 bilingual voice clips"))
                 yield break;
             if (!Check(app.room.GetComponentsInChildren<TextMesh>(true).Length == 0, "audience view has no floating nameplate"))
                 yield break;
@@ -56,13 +59,13 @@ namespace Nara.Practice
                 yield return null;
                 if (app.audience.Selection(0) != i || !app.audience.HeadAt(0))
                 {
-                    Check(false, "all 24 avatar prefabs can take the speaking seat");
+                    Check(false, "all 30 avatar prefabs can take the speaking seat");
                     yield break;
                 }
             }
             for (int i = 0; i < original.Length; i++)
                 app.audience.Select(i, original[i], false);
-            Check(true, "all 24 avatar prefabs can take the speaking seat");
+            Check(true, "all 30 avatar prefabs can take the speaking seat");
             var speakingActor = app.audience.HeadAt(0).GetComponentInParent<NaraAvatarPuppet>();
             var mesh = speakingActor.GetComponentInChildren<SkinnedMeshRenderer>();
             Quaternion neutral = speakingActor.Head.localRotation;
@@ -112,6 +115,15 @@ namespace Nara.Practice
             if (!Check(GameObject.Find("Pilihan karakter") && !GameObject.Find("Persiapan latihan"),
                 "desktop avatar picker gets its own focusable panel"))
                 yield break;
+            if (!Check(GameObject.Find("Pilih karakter") == null &&
+                GameObject.Find("Pilihan karakter").GetComponentsInChildren<Text>().Length > 14,
+                "avatar menu exposes roles, portraits and voice preview"))
+                yield break;
+            app.PreviewAvatar(original[0], true);
+            if (!Check(app.voice.clip == NaraPractice.VoiceClip(app.audience.Profiles[original[0]], "intro", "en") &&
+                app.SpeechText.Contains(app.audience.Profiles[original[0]].label), "picker plays the selected character's English voice"))
+                yield break;
+            app.StopAvatarPreview();
             yield return Frame("01-desktop-avatars");
             view.SetXr(true);
             Canvas ui = FindFirstObjectByType<Canvas>();
@@ -120,6 +132,7 @@ namespace Nara.Practice
                 GameObject.Find("Avatar headset") && !GameObject.Find("Panel desktop"),
                 "headset has a dedicated world-space avatar picker"))
                 yield break;
+            yield return Frame("01-headset-lead");
             view.NextAvatarSeat();
             view.Refresh();
             yield return Frame("01-headset-avatars");
@@ -130,6 +143,10 @@ namespace Nara.Practice
                 "returning from headset restores the desktop layout"))
                 yield break;
             app.StartPractice(app.Deck.Topic, app.Deck.Summary, "id", false, false, false);
+            if (!Check(app.GreetingText.Contains(app.audience.ProfileAt(NaraAudience.LeadSeat).label) &&
+                app.voice.clip == NaraPractice.VoiceClip(app.audience.ProfileAt(NaraAudience.LeadSeat), "intro", "id"),
+                "lead greets the presenter in the selected language"))
+                yield break;
             app.ChangeSlide(1);
             if (!Check(app.SlideIndex == Mathf.Min(1, app.Deck.Slides.Count - 1), "next slide"))
                 yield break;
@@ -152,6 +169,11 @@ namespace Nara.Practice
             view.SetXr(true);
             yield return Frame("02-headset-presentation");
             view.SetXr(false);
+            float greetingEnd = Time.realtimeSinceStartup + 8f;
+            while (!string.IsNullOrEmpty(app.GreetingText) && Time.realtimeSinceStartup < greetingEnd)
+                yield return null;
+            if (!Check(string.IsNullOrEmpty(app.GreetingText), "greeting frees the floor before the presentation timer runs"))
+                yield break;
             float wristAtRest = speakingActor.RightWrist.position.y;
             app.Session.Tick(PracticeSession.Duration);
             yield return new WaitForSecondsRealtime(.74f);
@@ -179,6 +201,7 @@ namespace Nara.Practice
             yield return new WaitForSecondsRealtime(.65f);
             if (!Check(app.Session.Phase == PracticePhase.Asking && app.Session.MainQuestions == 1 &&
                 app.Session.Skips == 0 && app.voice.isPlaying &&
+                app.voice.clip == NaraPractice.VoiceClip(app.audience.ProfileAt(0), "question_1", "id") &&
                 speakingActor.RightWrist.position.y < wristAtRest + .09f,
                 "grant lowers hand, speaks once and holds the answer controls"))
                 yield break;
@@ -197,7 +220,9 @@ namespace Nara.Practice
                 yield break;
             app.GrantFloor();
             yield return new WaitForSecondsRealtime(.55f);
-            if (!Check(app.voice.isPlaying && Vector3.Distance(app.voice.transform.position,
+            if (!Check(app.voice.isPlaying &&
+                app.voice.clip == NaraPractice.VoiceClip(app.audience.ProfileAt(app.QuestionerSeat), "question_2", "id") &&
+                Vector3.Distance(app.voice.transform.position,
                 app.audience.HeadAt(app.QuestionerSeat).position) < .04f, "voice follows the granted seat"))
                 yield break;
             yield return WaitForAnswer();
@@ -208,15 +233,23 @@ namespace Nara.Practice
             yield return Frame("04-reflection");
 
             app.ResetPractice();
+            int satria = Array.FindIndex(app.audience.Profiles, profile => profile.id == "Male_Adult_13");
+            app.audience.Select(NaraAudience.LeadSeat, satria, false);
             app.StartPractice(app.Deck.Topic, app.Deck.Summary, "en", true, false, false);
+            if (!Check(app.GreetingText.Contains("Satria") &&
+                app.voice.clip == NaraPractice.VoiceClip(app.audience.ProfileAt(NaraAudience.LeadSeat), "intro", "en"),
+                "Satria's English greeting follows his model into the lead role"))
+                yield break;
             if (!Check(app.Baseline && !app.room.activeSelf && app.voice.isActiveAndEnabled, "laptop baseline keeps speech available"))
                 yield break;
             yield return Frame("05-laptop");
             app.SetNetworkAvailable(false);
-            if (!Check(!app.Live && app.FallbackCount == 1 && app.SpeechText.StartsWith("The connection"),
+            if (!Check(!app.Live && app.FallbackCount == 1 && app.SpeechText.StartsWith("We lost the connection"),
                 "local disconnect immediately plays the English line"))
                 yield break;
             app.ResetPractice();
+            for (int i = 0; i < original.Length; i++)
+                app.audience.Select(i, original[i], false);
 
             if (Array.IndexOf(Environment.GetCommandLineArgs(), "-naraMock") >= 0)
             {
@@ -276,6 +309,29 @@ namespace Nara.Practice
             float end = Time.realtimeSinceStartup + 9;
             while (app.Session.Phase == PracticePhase.Waiting && Time.realtimeSinceStartup < end)
                 yield return null;
+        }
+
+        bool CheckVoiceBank()
+        {
+            var script = JsonUtility.FromJson<OfflineScript>(Resources.Load<TextAsset>("Nara/OfflineScript").text);
+            var usedClips = new System.Collections.Generic.HashSet<AudioClip>();
+            int female = 0, male = 0;
+            foreach (var profile in app.audience.Profiles)
+            {
+                if (profile.gender == "female") female++;
+                if (profile.gender == "male") male++;
+                foreach (var line in script.lines)
+                foreach (string locale in new[] { "id", "en" })
+                {
+                    AudioClip clip = NaraPractice.VoiceClip(profile, line.key, locale);
+                    if (!clip || clip.channels != 1 || clip.samples < 12000 || !usedClips.Add(clip))
+                    {
+                        Debug.LogError($"NARA_VOICE_INVALID {profile.id}/{line.key}_{locale}");
+                        return false;
+                    }
+                }
+            }
+            return female == 15 && male == 15 && usedClips.Count == 30 * 14;
         }
 
         IEnumerator WaitForAnswer()

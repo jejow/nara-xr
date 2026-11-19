@@ -6,9 +6,11 @@ namespace Nara.Practice
     public sealed partial class PracticeView
     {
         RectTransform xrSetup, xrAvatars, xrPresentation, xrConversation, xrReview;
-        Text xrTopic, xrDeck, xrVoice, xrLanguage, xrMetrics, xrConsent;
-        Text xrRole, xrAvatar, xrClock, xrSlide, xrPause, xrMic;
-        Text xrStatus, xrQuestion, xrQuestionNumber, xrAction, xrAnswers, xrNotice, xrReport, xrSuggestion;
+        RectTransform xrGreetingCard;
+        Text xrGreeting;
+        Text xrTopic, xrDeck, xrVoice, xrLanguage, xrMetrics, xrConsent, xrLeadChoice;
+        Text xrRole, xrAvatar, xrAvatarStatus, xrAvatarFilter, xrClock, xrSlide, xrPause, xrMic;
+        Text xrStatus, xrQuestion, xrQuestionNumber, xrAction, xrAnswers, xrNotice, xrReport, xrSuggestion, xrReviewSpeaker;
         RawImage xrPortrait;
 
         void BuildHeadset(RectTransform root)
@@ -20,25 +22,30 @@ namespace Nara.Practice
             xrDeck = Label(xrSetup, "", 22, FontStyle.Normal, Muted, 30, 179, 754, 33);
             xrVoice = HeadsetAction(xrSetup, "B", "Suara offline", 30, 225, 371);
             xrLanguage = HeadsetAction(xrSetup, "Y", "Bahasa Indonesia", 415, 225, 371);
-            HeadsetAction(xrSetup, "Grip kiri", "Pilih avatar", 30, 293, 371);
+            xrLeadChoice = HeadsetAction(xrSetup, "Grip kiri", "Pilih karakter", 30, 293, 371);
             xrMetrics = HeadsetAction(xrSetup, "Pelatuk kiri", "Catat waktu mati", 415, 293, 371);
             xrConsent = Label(xrSetup, "", 21, FontStyle.Normal, Tint, 31, 351, 753, 44,
                 TextAnchor.MiddleLeft, 19);
             HeadsetAction(xrSetup, "A", "Mulai latihan", 30, 398, 756, true);
 
             xrAvatars = Card(root, "Avatar headset", Dark, 58, 64, 844, 474);
-            Label(xrAvatars, "Pilih avatar", 41, FontStyle.Bold, White, 28, 20, 400, 55);
+            Label(xrAvatars, "Pilih karakter", 41, FontStyle.Bold, White, 28, 20, 443, 55);
             HeadsetAction(xrAvatars, "Grip kiri", "Tutup", 528, 20, 285);
             var photo = Card(xrAvatars, "Foto avatar", Navy, 30, 95, 312, 312);
             xrPortrait = Group(photo, "Potret", 6, 6, 300, 300).gameObject.AddComponent<RawImage>();
             xrPortrait.texture = Resources.Load<Texture2D>("Nara/AvatarPortraits");
             xrPortrait.raycastTarget = false;
-            xrRole = Label(xrAvatars, "", 24, FontStyle.Bold, Tint, 369, 107, 444, 43);
-            xrAvatar = Label(xrAvatars, "", 42, FontStyle.Bold, White, 368, 162, 444, 59, TextAnchor.MiddleLeft, 27);
-            HeadsetAction(xrAvatars, "A", "Pindah kursi", 369, 243, 444);
-            HeadsetAction(xrAvatars, "Y", "Sebelumnya", 369, 323, 216);
-            HeadsetAction(xrAvatars, "B", "Berikutnya", 597, 323, 216);
+            xrAvatarStatus = Label(xrAvatars, "", 22, FontStyle.Bold, Tint, 30, 413, 312, 33, TextAnchor.MiddleCenter);
+            xrRole = Label(xrAvatars, "", 24, FontStyle.Bold, Tint, 369, 93, 444, 37);
+            xrAvatar = Label(xrAvatars, "", 42, FontStyle.Bold, White, 368, 130, 444, 55, TextAnchor.MiddleLeft, 27);
+            HeadsetAction(xrAvatars, "A", "Pindah kursi", 369, 192, 444);
+            xrAvatarFilter = HeadsetAction(xrAvatars, "X", "Filter · Semua", 369, 258, 444);
+            HeadsetAction(xrAvatars, "Y", "Sebelumnya", 369, 324, 216);
+            HeadsetAction(xrAvatars, "B", "Berikutnya", 597, 324, 216);
+            HeadsetAction(xrAvatars, "Grip kanan", "Dengar suara", 369, 390, 444);
 
+            xrGreetingCard = Card(root, "Sapaan panel headset", Navy, 98, 328, 764, 63);
+            xrGreeting = Label(xrGreetingCard, "", 24, FontStyle.Bold, White, 18, 0, 728, 63, TextAnchor.MiddleCenter);
             xrPresentation = Card(root, "Kendali presentasi headset", Navy, 52, 404, 856, 168);
             xrClock = Label(xrPresentation, "03:00", 39, FontStyle.Bold, White, 24, 7, 145, 55);
             xrSlide = Label(xrPresentation, "", 25, FontStyle.Bold, Tint, 177, 9, 203, 49);
@@ -61,7 +68,8 @@ namespace Nara.Practice
             xrReview = Card(root, "Refleksi headset", Dark, 69, 91, 822, 407);
             Label(xrReview, "Latihan selesai", 43, FontStyle.Bold, White, 29, 23, 764, 57);
             xrReport = Label(xrReview, "", 23, FontStyle.Normal, Muted, 30, 87, 762, 55);
-            xrSuggestion = Label(xrReview, "", 31, FontStyle.Bold, White, 30, 157, 762, 143, TextAnchor.UpperLeft, 23);
+            xrReviewSpeaker = Label(xrReview, "", 23, FontStyle.Bold, Tint, 30, 142, 762, 32);
+            xrSuggestion = Label(xrReview, "", 31, FontStyle.Bold, White, 30, 184, 762, 121, TextAnchor.UpperLeft, 23);
             HeadsetAction(xrReview, "Grip kiri", "Putar saran", 30, 321, 373);
             HeadsetAction(xrReview, "A", "Latihan baru", 420, 321, 372, true);
         }
@@ -86,22 +94,27 @@ namespace Nara.Practice
             Show(xrSetup, preparing && !avatarPickerOpen);
             Show(xrAvatars, preparing && avatarPickerOpen);
             Show(xrPresentation, presenting);
+            Show(xrGreetingCard, presenting && !string.IsNullOrEmpty(app.GreetingText));
+            Set(xrGreeting, app.GreetingText);
             Show(xrConversation, asking);
             Show(xrReview, reviewing);
             if (preparing)
             {
                 if (avatarPickerOpen)
                 {
-                    int index = app.audience.Selection(avatarSeat);
+                    AvatarProfile profile = app.audience.ProfileAt(avatarSeat);
                     Set(xrRole, SeatNames[avatarSeat]);
-                    Set(xrAvatar, app.audience.Profiles[index].label);
-                    xrPortrait.uvRect = PortraitUv(index);
+                    Set(xrAvatar, profile.label);
+                    Set(xrAvatarStatus, profile.gender == "female" ? "✓ Dipilih · Perempuan" : "✓ Dipilih · Laki-laki");
+                    Set(xrAvatarFilter, $"Filter · {GenderNames[(int)avatarGender]}");
+                    xrPortrait.uvRect = PortraitUv(profile.portrait);
                     return;
                 }
                 Set(xrTopic, topic.text);
                 Set(xrDeck, app.Deck.Status + "  ·  3 menit presentasi");
                 Set(xrVoice, cloud ? "Suara live" : "Suara offline");
                 Set(xrLanguage, english ? "English" : "Bahasa Indonesia");
+                Set(xrLeadChoice, $"Karakter · {LeadName}");
                 Set(xrMetrics, metrics ? "Catat waktu aktif" : "Catat waktu mati");
                 Set(xrConsent, string.IsNullOrEmpty(app.Notice) ?
                     cloud ? "Mode live mengirim topik, audio, dan jawaban ke layanan AI." : "" : app.Notice);
@@ -118,7 +131,8 @@ namespace Nara.Practice
             if (reviewing)
             {
                 Set(xrReport, SessionReport());
-                Set(xrSuggestion, app.Session.Suggestion);
+                Set(xrReviewSpeaker, $"Saran dari {LeadName}");
+                Set(xrSuggestion, string.IsNullOrEmpty(app.SpeechText) ? app.Session.Suggestion : app.SpeechText);
                 return;
             }
             bool answering = state == PracticePhase.Question;

@@ -17,6 +17,8 @@ namespace Nara.Practice
     {
         public string operation;
         public string language;
+        public string speaker;
+        public string lead;
         public string topic;
         public string summary;
         public string presentation;
@@ -35,6 +37,7 @@ namespace Nara.Practice
         public string anchor;
         public string audio;
         public string source;
+        public string speaker;
     }
 
     public sealed class PracticeSession

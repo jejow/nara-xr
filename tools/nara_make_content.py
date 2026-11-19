@@ -91,6 +91,8 @@ def make_voice():
         if engine.espeak_SetVoiceByName(voice) != 0:
             raise RuntimeError(f"Voice unavailable for {language}")
         for line in data["lines"]:
+            if line["key"] == "intro":
+                continue
             pcm.clear()
             text = line[language].encode("utf-8")
             status = engine.espeak_Synth(text, len(text) + 1, 0, 1, 0, 1 | 0x1000, None, None)

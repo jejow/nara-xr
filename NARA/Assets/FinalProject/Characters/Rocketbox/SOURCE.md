@@ -1,6 +1,6 @@
 # Avatar audiens Microsoft Rocketbox
 
-NARA menyertakan 24 model dewasa yang berbeda dari **Microsoft Rocketbox Avatar Library** untuk penanya dan dua anggota audiens di ruang presentasi. Nama di menu adalah label fiktif untuk memudahkan pemilihan. [Repositori sumber](https://github.com/microsoft/Microsoft-Rocketbox), [lisensi MIT](LICENSE-Microsoft-Rocketbox.md)
+NARA menyertakan 30 model dewasa yang berbeda dari **Microsoft Rocketbox Avatar Library** untuk penanya dan dua anggota audiens di ruang presentasi. Nama di menu adalah fiktif. Laras dan Satria memakai model baru Female Adult 13 dan Male Adult 13. Naya, Jati, Mira, dan Reza memakai model perempuan dan laki-laki 14–15. [Repositori sumber](https://github.com/microsoft/Microsoft-Rocketbox) · [Lisensi MIT](LICENSE-Microsoft-Rocketbox.md)
 
 FBX wajah, tekstur, dan potret berasal dari revisi `0943055db6ec570bcef9f2c8b41c9e5467c808f9`. Manifest mencatat jalur unduhan, nama hasil konversi, dan hash blob Git yang diverifikasi sebelum aset dipakai. [Manifest aset sumber](SourceAssets.json)
 

@@ -23,7 +23,7 @@ namespace Nara.Practice
         const float Deadline = 8f;
         readonly PracticeMicrophone mic = new();
         readonly MemoryStream presentationAudio = new();
-        readonly Queue<(string caption, AudioClip clip)> speech = new();
+        readonly Queue<(string caption, AudioClip clip, int seat)> speech = new();
         readonly Dictionary<string, RecordedLine> script = new();
         readonly List<float> replyTimes = new();
         readonly float[] voiceSamples = new float[128];
@@ -43,7 +43,8 @@ namespace Nara.Practice
         bool logMetrics;
         bool sawLiveReply;
         bool usedMock;
-        int fallbacks, questionSeat, secondSeat = 2;
+        int fallbacks, questionSeat, speakerSeat = -1, secondSeat = 2;
+        bool greeting;
         float questionStartsAt = -1, answerOpensAt, floorGrantedAt = -10;
 
         public PracticeSession Session { get; } = new();
@@ -57,11 +58,12 @@ namespace Nara.Practice
         public bool Recording => mic.Recording;
         public string Language => language;
         public string SpeechText { get; private set; } = "";
+        public string GreetingText => greeting ? SpeechText : "";
         public string Notice => Time.unscaledTime < noticeUntil ? notice : "";
         public Texture2D Slide => SlideIndex < Deck.Slides.Count ? Deck.Slides[SlideIndex] : null;
         public bool CanReplay => lastAudio && Session.Phase is PracticePhase.Question or PracticePhase.Review;
         public int QuestionerSeat => questionSeat;
-        public string QuestionerName => audience.Profiles[audience.Selection(questionSeat)].label;
+        public string QuestionerName => audience.ProfileAt(questionSeat).label;
         public int FallbackCount => fallbacks;
 
         void Awake()
@@ -89,7 +91,9 @@ namespace Nara.Practice
 
         void Update()
         {
-            if (Session.Phase == PracticePhase.Presentation && !Session.Paused)
+            if (greeting && !voice.isPlaying)
+                greeting = false;
+            if (Session.Phase == PracticePhase.Presentation && !Session.Paused && !greeting)
             {
                 Session.Tick(Time.unscaledDeltaTime);
                 if (Session.Remaining <= 0)
@@ -103,7 +107,7 @@ namespace Nara.Practice
                 if (speech.Count > 0)
                 {
                     var line = speech.Dequeue();
-                    Speak(line.caption, line.clip);
+                    Speak(line.caption, line.clip, line.seat);
                 }
             }
             AdvanceQuestion();
@@ -140,8 +144,30 @@ namespace Nara.Practice
             Session.Start(topic, summary ?? "");
             ApplySlide();
             ApplyPresentationMode();
+            AvatarProfile lead = audience.ProfileAt(NaraAudience.LeadSeat);
+            Speak(Text("intro", language, lead), VoiceClip(lead, "intro", language), NaraAudience.LeadSeat);
+            greeting = voice.isPlaying;
             if (cloudConsent && !Live)
                 Notify("Koneksi belum tersedia. Sesi memakai pertanyaan tersimpan.");
+        }
+
+        public void PreviewAvatar(int index, bool english)
+        {
+            if (Session.Phase != PracticePhase.Setup || index < 0 || index >= audience.Profiles.Length)
+                return;
+            var avatar = audience.Profiles[index];
+            string previewLanguage = english ? "en" : "id";
+            StopSpeech();
+            voice.spatialBlend = 0;
+            Speak(Text("intro", previewLanguage, avatar), VoiceClip(avatar, "intro", previewLanguage), audience.SeatOf(index));
+        }
+
+        public void StopAvatarPreview()
+        {
+            if (Session.Phase != PracticePhase.Setup)
+                return;
+            StopSpeech();
+            ApplyPresentationMode();
         }
 
         public void ApplyPresentationMode()
@@ -192,6 +218,8 @@ namespace Nara.Practice
         {
             if (Session.Phase != PracticePhase.Presentation)
                 return;
+            if (greeting)
+                StopSpeech();
             float started = Time.realtimeSinceStartup;
             StorePresentationAudio();
             byte[] audio = Live ? PracticeMicrophone.EncodeWav(presentationAudio.ToArray()) : null;
@@ -219,7 +247,7 @@ namespace Nara.Practice
                 if (now < questionStartsAt)
                     return;
                 questionStartsAt = -1;
-                Speak(Session.Question, lastAudio);
+                Speak(Session.Question, lastAudio, questionSeat);
                 float duration = lastAudio ? lastAudio.length + .22f : Mathf.Clamp(Session.Question.Length / 24f, 1.25f, 5f);
                 answerOpensAt = now + duration;
             }
@@ -243,7 +271,7 @@ namespace Nara.Practice
 
         public void BeginTalk()
         {
-            if (!Live || Recording || Session.Paused || (Session.Phase != PracticePhase.Question && Session.Phase != PracticePhase.Presentation))
+            if (!Live || Recording || greeting || Session.Paused || (Session.Phase != PracticePhase.Question && Session.Phase != PracticePhase.Presentation))
                 return;
             StartCoroutine(RequestMicrophone());
         }
@@ -333,7 +361,10 @@ namespace Nara.Practice
                 FallBack("connection", false);
                 return;
             }
-            waiting = StartCoroutine(RequestTurn(Session.Request(language, audio), started));
+            TurnRequest turn = Session.Request(language, audio);
+            turn.speaker = audience.ProfileAt(SeatForTurn(turn.operation)).id;
+            turn.lead = audience.ProfileAt(NaraAudience.LeadSeat).id;
+            waiting = StartCoroutine(RequestTurn(turn, started));
         }
 
         IEnumerator RequestTurn(TurnRequest turn, float started)
@@ -383,19 +414,33 @@ namespace Nara.Practice
             try { reply = JsonUtility.FromJson<TurnReply>(request.downloadHandler.text); }
             catch (ArgumentException) { reply = null; }
             Session.SetLatestTranscript(reply?.transcript);
-            if (reply == null || !ValidFollowUp(reply, turn) || !Session.ApplyReply(reply.kind, reply.text))
+            int seat = SeatForTurn(turn.operation, reply?.kind);
+            AudioClip clip = reply != null && reply.speaker == audience.ProfileAt(seat).id
+                ? PracticeMicrophone.DecodeWav(reply.audio) : null;
+            bool textOnlyMock = reply?.source == "mock" && reply.kind == PracticeSession.FollowUp;
+            if (reply == null || (!clip && !textOnlyMock) || !ValidFollowUp(reply, turn) || !Session.ApplyReply(reply.kind, reply.text))
             {
+                if (clip)
+                    Destroy(clip);
                 FallBack("unusable", !string.IsNullOrEmpty(turn.audio));
                 yield break;
             }
             usedMock |= reply.source == "mock";
             sawLiveReply |= reply.source == "live";
-            AudioClip clip = PracticeMicrophone.DecodeWav(reply.audio);
             if (generatedAudio)
                 Destroy(generatedAudio);
             generatedAudio = clip;
-            ShowReply(reply.text, clip, false);
+            ShowReply(reply.text, clip, seat, false);
         }
+
+        int SeatForTurn(string operation, string kind = null) => kind == PracticeSession.Feedback
+            ? NaraAudience.LeadSeat
+            : operation switch
+            {
+                PracticeSession.SecondQuestion => secondSeat,
+                PracticeSession.AfterSecond => questionSeat,
+                _ => NaraAudience.LeadSeat,
+            };
 
         static bool ValidFollowUp(TurnReply reply, TurnRequest turn)
         {
@@ -422,35 +467,40 @@ namespace Nara.Practice
             string kind = "question";
             if (key == PracticeSession.AfterSecond || key == PracticeSession.Feedback)
                 key = kind = PracticeSession.Feedback;
+            int seat = SeatForTurn(Session.Operation, kind);
             string text = Text(key);
             if (Session.ApplyReply(kind, text))
-                ShowReply(text, Clip(key), queue);
+                ShowReply(text, VoiceClip(audience.ProfileAt(seat), key, language), seat, queue);
         }
 
         string Text(string key) => language == "en" ? script[key].en : script[key].id;
-        AudioClip Clip(string key) => Resources.Load<AudioClip>("Nara/" + key + "_" + language);
+        string Text(string key, string locale, AvatarProfile avatar) =>
+            (locale == "en" ? script[key].en : script[key].id).Replace("{name}", avatar.label);
+
+        internal static AudioClip VoiceClip(AvatarProfile avatar, string key, string locale) =>
+            Resources.Load<AudioClip>($"Nara/Voices/{avatar.id}/{key}_{locale}");
 
         void SpeakNotice(string key)
         {
             StopSpeech();
             string text = Text(key);
             Notify(text, 7);
-            Speak(text, Clip(key));
+            int seat = NaraAudience.LeadSeat;
+            Speak(text, VoiceClip(audience.ProfileAt(seat), key, language), seat);
         }
 
-        void ShowReply(string text, AudioClip audio, bool queue)
+        void ShowReply(string text, AudioClip audio, int seat, bool queue)
         {
             lastAudio = audio;
             if (Session.Phase == PracticePhase.FloorRequest)
             {
-                if (!Session.IsFollowUp)
-                    questionSeat = Session.MainQuestions == 0 ? 0 : secondSeat;
+                questionSeat = seat;
                 return;
             }
             if (queue && voice.isPlaying && audio)
-                speech.Enqueue((text, audio));
+                speech.Enqueue((text, audio, seat));
             else
-                Speak(text, audio);
+                Speak(text, audio, seat);
             if (Session.Phase == PracticePhase.Review)
                 WriteMetrics(true);
         }
@@ -463,14 +513,18 @@ namespace Nara.Practice
             if (Session.RepeatQuestion())
                 questionStartsAt = Time.unscaledTime;
             else
-                Speak(Session.Suggestion, lastAudio);
+                Speak(Session.Suggestion, lastAudio, NaraAudience.LeadSeat);
         }
 
-        void Speak(string text, AudioClip clip)
+        void Speak(string text, AudioClip clip, int seat)
         {
             if (!clip)
                 return;
             SpeechText = text;
+            speakerSeat = seat;
+            Transform speaker = audience.HeadAt(seat);
+            if (speaker)
+                voice.transform.position = speaker.position;
             voice.clip = clip;
             voice.Play();
         }
@@ -480,6 +534,8 @@ namespace Nara.Practice
             speech.Clear();
             voice.Stop();
             voice.clip = null;
+            speakerSeat = -1;
+            greeting = false;
             SpeechText = "";
         }
 
@@ -493,14 +549,14 @@ namespace Nara.Practice
                     amplitude += sample * sample;
                 amplitude = Mathf.Clamp01(Mathf.Sqrt(amplitude / voiceSamples.Length) * 7);
             }
-            bool questionVoice = Session.Phase is PracticePhase.Asking or PracticePhase.Review;
-            Transform speaker = audience.HeadAt(questionVoice ? questionSeat : 0);
+            int activeSpeaker = voice.isPlaying ? speakerSeat : -1;
+            Transform speaker = audience.HeadAt(activeSpeaker);
             if (speaker)
                 voice.transform.position = speaker.position;
             float now = Time.unscaledTime;
             float nod = Session.Phase == PracticePhase.Asking ? Mathf.Sin(Mathf.PI * Mathf.Clamp01((now - floorGrantedAt) / .62f)) : 0;
             bool listens = (Session.Phase == PracticePhase.Presentation && !Session.Paused) || Session.Phase == PracticePhase.Question;
-            audience.Animate(now, Session.Elapsed, listens, amplitude, questionVoice && voice.isPlaying,
+            audience.Animate(now, Session.Elapsed, listens, amplitude, activeSpeaker,
                 practiceCamera.transform.position, questionSeat, Session.Phase == PracticePhase.FloorRequest, nod);
         }
 

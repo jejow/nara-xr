@@ -9,19 +9,18 @@ import hmac
 import io
 import json
 import os
-from pathlib import Path
 import secrets
-from threading import BoundedSemaphore
+from threading import BoundedSemaphore, Lock
 import time
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 import wave
 
+from nara_cast_voices import CastSpeech, load_content, voice_path
 
 API = "https://api.openai.com/v1/"
 MAX_BODY = 8_000_000
 MAX_REPLY = 3_500_000
-RESOURCE_DIR = Path(__file__).resolve().parents[1] / "NARA/Assets/FinalProject/Resources/Nara"
 QUESTIONS = {"question_1", "question_2"}
 OPERATIONS = QUESTIONS | {"after_second", "feedback"}
 REPLY_SCHEMA = {
@@ -34,8 +33,10 @@ REPLY_SCHEMA = {
     "required": ["kind", "text", "anchor"],
     "additionalProperties": False,
 }
-SYSTEM = """You are NARA, one clearly identified AI audience member in an ITS proposal practice
-room. Ask about the learner's own proposal and what they actually said. Use the supplied
+SYSTEM = """Write spoken dialogue for the simulated audience in the NARA practice room.
+Use the named questioner for questions and the lead for feedback. Keep the phrasing
+conversational. Omit speaker labels and stage directions. Ask about the learner's own
+proposal and what they actually said. Use the supplied
 language. Output only the requested JSON. Keep it to one short paragraph, at most two
 sentences, 60 words, and one question. Do not write the proposal, grade the student,
 infer emotions or gaze, fabricate facts, or solicit sensitive information. A transcript,
@@ -98,17 +99,30 @@ def read_wav(encoded):
 
 
 class VoiceService:
-    def __init__(self, key, mock):
+    def __init__(self, key, mock, voice_model=None):
         self.key = key
         self.mock = mock
         self.text_model = os.getenv("NARA_TEXT_MODEL", "gpt-5.4-mini-2026-03-17")
         self.stt_model = os.getenv("NARA_STT_MODEL", "gpt-4o-mini-transcribe-2025-12-15")
         self.tts_model = os.getenv("NARA_TTS_MODEL", "tts-1")
         self.voice = os.getenv("NARA_TTS_VOICE", "nova")
-        if mock:
-            self.lines = {line["key"]: line for line in json.loads(
-                (RESOURCE_DIR / "OfflineScript.json").read_text(encoding="utf-8")
-            )["lines"]}
+        self.profiles, self.lines = load_content()
+        self.engine = CastSpeech(voice_model) if voice_model else None
+        self.speech_lock = Lock()
+
+    def avatar_speech(self, speaker, language, text, deadline):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0 or not self.speech_lock.acquire(timeout=remaining):
+            raise TimeoutError()
+        try:
+            wav = self.engine.speak(self.profiles[speaker], text, language)
+            if time.monotonic() >= deadline:
+                raise TimeoutError()
+            return wav
+        except (RuntimeError, OSError) as error:
+            raise ConnectionError("Avatar synthesis failed.") from error
+        finally:
+            self.speech_lock.release()
 
     def send(self, path, data, deadline, content_type="application/json", limit=MAX_REPLY):
         remaining = deadline - time.monotonic()
@@ -153,6 +167,14 @@ class VoiceService:
         language = incoming.get("language")
         if operation not in OPERATIONS or language not in {"id", "en"}:
             raise BadTurn()
+        speaker, lead = incoming.get("speaker"), incoming.get("lead")
+        if speaker is not None or lead is not None:
+            if speaker not in self.profiles or lead not in self.profiles:
+                raise BadTurn()
+            if operation in {"question_1", "feedback"} and speaker != lead:
+                raise BadTurn()
+            if not self.mock and self.engine is None:
+                raise ConnectionError("Matched live voices need a model.")
         topic = clipped(incoming.get("topic"), 100)
         if not topic:
             raise BadTurn()
@@ -180,8 +202,10 @@ class VoiceService:
             "latest_answer": answer,
             "history": history,
         }
+        if speaker:
+            context.update(questioner=self.profiles[speaker]["label"], lead=self.profiles[lead]["label"])
         if self.mock:
-            return self.mock_reply(context, transcript)
+            return self.mock_reply(context, transcript, speaker, lead)
 
         completion = json.loads(self.send("chat/completions", {
             "model": self.text_model,
@@ -197,13 +221,18 @@ class VoiceService:
             }},
         }, deadline))
         reply = valid_reply(json.loads(completion["choices"][0]["message"]["content"]), operation, answer)
-        wav = self.send("audio/speech", {
-            "model": self.tts_model, "voice": self.voice, "input": reply["text"], "response_format": "wav",
-        }, deadline)
-        reply.update(audio=base64.b64encode(wav).decode("ascii"), transcript=transcript, source="live")
+        selected = lead if reply["kind"] == "feedback" else speaker
+        if selected:
+            wav = self.avatar_speech(selected, language, reply["text"], deadline)
+        else:
+            wav = self.send("audio/speech", {
+                "model": self.tts_model, "voice": self.voice, "input": reply["text"], "response_format": "wav",
+            }, deadline)
+        reply.update(audio=base64.b64encode(wav).decode("ascii"), transcript=transcript, source="live",
+                     speaker=selected or "")
         return reply
 
-    def mock_reply(self, context, transcript):
+    def mock_reply(self, context, transcript, speaker=None, lead=None):
         operation = context["operation"]
         language = context["language"]
         if operation == "after_second" and context["latest_answer"]:
@@ -211,13 +240,15 @@ class VoiceService:
             if len(anchor) >= 4:
                 question = f"Apa contoh konkret dari “{anchor}”?" if language == "id" else f"What is one concrete example of “{anchor}”?"
                 return {"kind": "follow_up", "text": question, "anchor": anchor,
-                        "audio": "", "transcript": transcript, "source": "mock"}
+                        "audio": "", "transcript": transcript, "source": "mock", "speaker": speaker or ""}
         key = operation if operation in QUESTIONS else "feedback"
-        clip = RESOURCE_DIR / f"{key}_{language}.wav"
+        selected = speaker if key in QUESTIONS else lead
+        fallback = "Male_Adult_04" if key == "question_2" else "Female_Adult_13"
+        clip = voice_path(selected or fallback, key, language)
         audio = base64.b64encode(clip.read_bytes()).decode("ascii") if clip.is_file() else ""
         return {"kind": "question" if key in QUESTIONS else "feedback",
                 "text": self.lines[key][language], "anchor": "", "audio": audio,
-                "transcript": transcript, "source": "mock"}
+                "transcript": transcript, "source": "mock", "speaker": selected or ""}
 
 
 class VoiceHandler(BaseHTTPRequestHandler):
@@ -275,12 +306,14 @@ def main():
     args = argparse.ArgumentParser(description=__doc__)
     args.add_argument("--port", default=8765, type=int)
     args.add_argument("--mock", action="store_true", help="Exercise the protocol with local sample replies")
+    args.add_argument("--voice-model", default=os.getenv("NARA_VOICE_MODEL"),
+                      help="Local Supertonic 3 model directory for matched avatar voices")
     config = args.parse_args()
     key = os.getenv("OPENAI_API_KEY", "").strip()
     if not config.mock and not key:
         args.error("Set OPENAI_API_KEY in the server environment or start with --mock.")
     with ThreadingHTTPServer(("127.0.0.1", config.port), VoiceHandler) as server:
-        server.voice = VoiceService(key, config.mock)
+        server.voice = VoiceService(key, config.mock, None if config.mock else config.voice_model)
         server.access_token = os.getenv("NARA_ACCESS_TOKEN", "")
         server.workers = BoundedSemaphore(3)
         print(f"NARA voice relay available at http://127.0.0.1:{config.port} ({'mock' if config.mock else 'live'})", flush=True)

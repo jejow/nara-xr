@@ -12,8 +12,10 @@ namespace Nara.Practice
         RectTransform stageBar, laptopFrame, conversation, answerArea, review, timerFill;
         RawImage setupThumbnail, setupSlide, laptopSlide;
         Text deckCount, deckStatus, setupNotice, settingsNotice, stageClock, stageSlide, stageHint;
-        Text desktopPrompt, desktopStatus, desktopNumber, desktopHint, desktopNotice, reviewMessage, reviewCounts;
-        Button roomChoice, laptopChoice, languageChoice, metricsChoice, cloudChoice;
+        RectTransform stageGreetingCard;
+        Text stageGreeting;
+        Text desktopPrompt, desktopStatus, desktopNumber, desktopHint, desktopNotice, reviewMessage, reviewCounts, reviewSpeaker;
+        Button roomChoice, laptopChoice, languageChoice, metricsChoice, cloudChoice, leadChoice;
         Button stagePrevious, stageNext, stagePause, grantFloor, submit, talk, skip, replay, testConnection, reviewReplay;
 
         void BuildDesktop(RectTransform canvasRoot)
@@ -47,7 +49,7 @@ namespace Nara.Practice
             Label(review, "Latihan selesai", 45, FontStyle.Bold, White, 37, 27, 716, 65);
             reviewCounts = Label(review, "", 20, FontStyle.Normal, Muted, 38, 106, 716, 42);
             Panel(review, "Pemisah", Stroke, 38, 168, 716, 1, false);
-            Label(review, "Saran untuk sesi berikutnya", 19, FontStyle.Bold, Tint, 38, 190, 716, 30);
+            reviewSpeaker = Label(review, "", 19, FontStyle.Bold, Tint, 38, 190, 716, 30);
             reviewMessage = Label(review, "", 28, FontStyle.Normal, White, 38, 232, 716, 107, TextAnchor.UpperLeft, 20);
             reviewReplay = Control(review, "Putar saran", 38, 353, 238, 52, app.Replay);
             Control(review, "Latihan baru", 291, 353, 463, 52, app.ResetPractice, true, 20);
@@ -71,7 +73,7 @@ namespace Nara.Practice
             Label(material, "Materi latihan", 19, FontStyle.Bold, White, 111, 7, 205, 28);
             deckCount = Label(material, "", 16, FontStyle.Normal, Muted, 111, 35, 205, 24);
             Label(material, "›", 28, FontStyle.Normal, Tint, 316, 11, 28, 45, TextAnchor.MiddleCenter);
-            Control(startCard, "Pilih avatar", 28, 501, 172, 43, ToggleAvatarPicker);
+            leadChoice = Control(startCard, "Pilih karakter", 28, 501, 172, 43, ToggleAvatarPicker, false, 16);
             Control(startCard, "Pengaturan", 212, 501, 172, 43, () => SetDesktopSection(DesktopSection.Settings));
             Control(startCard, "Mulai latihan", 28, 562, 356, 49, Begin, true, 21);
 
@@ -107,6 +109,8 @@ namespace Nara.Practice
 
         void BuildDesktopPresentation(RectTransform root)
         {
+            stageGreetingCard = Card(root, "Sapaan panel", Navy, 360, 726, 720, 54);
+            stageGreeting = Label(stageGreetingCard, "", 19, FontStyle.Bold, White, 16, 0, 688, 54, TextAnchor.MiddleCenter);
             stageBar = Card(root, "Kendali presentasi 3D", Navy, 168, 790, 1104, 73);
             stageClock = Label(stageBar, "03:00", 29, FontStyle.Bold, White, 17, 5, 109, 53, TextAnchor.MiddleCenter);
             var track = Panel(stageBar, "Sisa waktu", Raised, 26, 59, 91, 4, false);
@@ -161,6 +165,8 @@ namespace Nara.Practice
             bool preparing = state == PracticePhase.Setup;
             bool presenting = state == PracticePhase.Presentation;
             bool reviewing = state == PracticePhase.Review;
+            Show(stageGreetingCard, presenting && !string.IsNullOrEmpty(app.GreetingText));
+            Set(stageGreeting, app.GreetingText);
             Show(masthead, preparing || reviewing || app.Baseline);
             Show(setup, preparing && !avatarPickerOpen);
             Show(avatarPanel, preparing && avatarPickerOpen);
@@ -177,7 +183,8 @@ namespace Nara.Practice
             if (reviewing)
             {
                 Set(reviewCounts, SessionReport());
-                Set(reviewMessage, app.Session.Suggestion);
+                Set(reviewSpeaker, $"Saran dari {LeadName}");
+                Set(reviewMessage, string.IsNullOrEmpty(app.SpeechText) ? app.Session.Suggestion : app.SpeechText);
                 reviewReplay.interactable = app.CanReplay;
                 return;
             }
@@ -214,6 +221,7 @@ namespace Nara.Practice
             {
                 case DesktopSection.Start:
                     Set(deckCount, $"{app.Deck.Slides.Count} slide");
+                    SetButton(leadChoice, $"Karakter · {LeadName}");
                     ShowSlide(setupThumbnail, app.Slide);
                     Choice(roomChoice, !baseline);
                     Choice(laptopChoice, baseline);

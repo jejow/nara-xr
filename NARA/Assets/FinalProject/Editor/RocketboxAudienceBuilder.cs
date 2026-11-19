@@ -13,14 +13,20 @@ namespace Nara.Practice.Editor
         const string Source = NaraPracticeBuild.Root + "/Characters/Rocketbox";
         const string Prefabs = NaraPracticeBuild.Root + "/Resources/Nara/Avatars";
 
-        public static int BuildPrefabs()
+        public static int BuildPrefabs(bool onlyMissing = false)
         {
             AvatarProfile[] profiles = AvatarCatalog.Load().entries;
-            if (profiles.Length != 24 || profiles.Select(item => item.id).Distinct().Count() != profiles.Length)
-                throw new BuildFailedException("Expected 24 distinct Rocketbox profiles.");
+            if (profiles.Select(item => item.id).Distinct().Count() != profiles.Length)
+                throw new BuildFailedException("Expected distinct Rocketbox profiles.");
             Directory.CreateDirectory(Prefabs);
             AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
-            int[] counts = profiles.Select(BuildPrefab).OrderByDescending(value => value).ToArray();
+            int[] counts = profiles.Select(profile =>
+            {
+                var existing = onlyMissing
+                    ? AssetDatabase.LoadAssetAtPath<GameObject>($"{Prefabs}/{profile.id}.prefab")?.GetComponent<NaraAvatarPuppet>()
+                    : null;
+                return existing ? existing.Triangles : BuildPrefab(profile);
+            }).OrderByDescending(value => value).ToArray();
             return counts.Take(NaraAudience.SeatCount).Sum();
         }
 

@@ -9,6 +9,9 @@ namespace Nara.Practice
     {
         public string id;
         public string label;
+        public string gender;
+        public int portrait;
+        public bool featured;
     }
 
     [Serializable]
@@ -16,13 +19,16 @@ namespace Nara.Practice
     {
         public const string Resource = "Nara/AvatarCatalog";
         public const string Models = "Nara/Avatars/";
+        public const int ProfileCount = 30;
+        public const int PortraitColumns = 6;
+        public const int PortraitRows = 5;
         public AvatarProfile[] entries;
 
         public static AvatarCatalog Load()
         {
             var asset = Resources.Load<TextAsset>(Resource);
             var result = asset ? JsonUtility.FromJson<AvatarCatalog>(asset.text) : null;
-            if (result?.entries == null || result.entries.Length < NaraAudience.SeatCount)
+            if (result?.entries == null || result.entries.Length != ProfileCount)
                 throw new InvalidOperationException("The NARA avatar catalog is missing or incomplete.");
             return result;
         }
@@ -31,15 +37,18 @@ namespace Nara.Practice
     public sealed class NaraAudience : MonoBehaviour
     {
         public const int SeatCount = 3;
+        public const int LeadSeat = 0;
         const string Preference = "Nara.Audience.Seat.";
-        static readonly string[] Defaults = { "Female_Adult_05", "Male_Adult_04", "Female_Adult_06" };
+        static readonly string[] Defaults = { "Female_Adult_13", "Male_Adult_04", "Female_Adult_06" };
 
         public Transform[] seats;
         readonly NaraAvatarPuppet[] actors = new NaraAvatarPuppet[SeatCount];
         readonly int[] selected = new int[SeatCount];
         public AvatarProfile[] Profiles { get; private set; }
-        public Transform HeadAt(int seat) => actors[seat] ? actors[seat].Head : null;
+        public Transform HeadAt(int seat) => seat >= 0 && seat < SeatCount && actors[seat] ? actors[seat].Head : null;
         public int Selection(int seat) => selected[seat];
+        public AvatarProfile ProfileAt(int seat) => Profiles[selected[seat]];
+        public int SeatOf(int profile) => Array.IndexOf(selected, profile);
 
         public void Initialise()
         {
@@ -93,15 +102,18 @@ namespace Nara.Practice
             }
         }
 
-        public void Animate(float time, float elapsed, bool listening, float audio, bool speaking,
+        public void Animate(float time, float elapsed, bool listening, float audio, int speakerSeat,
             Vector3 presenterEyes, int focusSeat, bool raisesHand, float nod)
         {
-            Vector3 speakerEyes = speaking ? actors[focusSeat].Head.position : presenterEyes;
+            Transform speaker = HeadAt(speakerSeat);
+            Vector3 speakerEyes = speaker ? speaker.position : presenterEyes;
             for (int i = 0; i < SeatCount; i++)
             {
                 bool focused = i == focusSeat;
-                actors[i].Animate(time + i * 1.7f, elapsed, listening, focused ? audio : 0, focused && speaking,
-                    focused ? presenterEyes : speakerEyes, focused && raisesHand, focused ? nod : 0);
+                bool speaking = i == speakerSeat;
+                actors[i].Animate(time + i * 1.7f, elapsed, listening, speaking ? audio : 0, speaking,
+                    (speaking || (focused && !speaker)) ? presenterEyes : speakerEyes,
+                    focused && raisesHand, focused ? nod : 0);
             }
         }
 

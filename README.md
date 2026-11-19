@@ -11,12 +11,15 @@ NARA adalah ruang latihan presentasi untuk laptop dan headset XR. Pilih topik, p
 3. Pilih **Ruang 3D** atau **Layar laptop**. **Materi latihan** memuat ringkasan dan slide. **Pengaturan** memuat bahasa, suara, dan pencatatan waktu.
 4. Untuk Windows, gunakan **NARA → Final Project → Build Windows**. Player hasil build berada di `NARA/BuildFinalProject/Windows/NARA.exe`.
 
-Sesi 3D memakai tiga kursi panel yang dapat diisi dari 24 pilihan avatar. **Tab** dan **Shift+Tab** memindah fokus. **Enter** mengaktifkan kontrol. Klik kanan dan seret untuk melihat ruangan. Tahan **V** untuk melihat monitor podium.
+Sesi 3D memakai tiga kursi panel yang dapat diisi dari **30 karakter bersuara**. Dari panel persiapan, pilih **Karakter** untuk mengganti penanya utama, menyaring pilihan perempuan atau laki-laki, dan mencoba suaranya. **Laras** dan **Satria** tampil pertama sebagai opsi utama. Karakter utama memberi sapaan, pertanyaan pertama, dan saran akhir. Suara mengikuti karakter saat kamu menukar kursi.
+
+**Tab** dan **Shift+Tab** memindah fokus. **Enter** mengaktifkan kontrol. Klik kanan dan seret untuk melihat ruangan. Tahan **V** untuk melihat monitor podium. Di headset, buka pemilih dengan **Grip kiri**. **A** berpindah peran, **Y/B** mengganti karakter, **X** mengganti filter gender, dan **Grip kanan** memutar suara.
 
 ## Lanjutkan proyek
 
 - [HANDOFF.md](HANDOFF.md) memuat konteks sesi, keputusan pengguna, arsitektur, kontrol, alur build, dan status pengujian. File ini bisa diberikan langsung ke chat AI lain.
 - [Model Blender ruang](assets/blender/NARA-Kelas-Presentasi.blend) dan [model meja dan kursi](assets/blender/Meja-Kursi.blend) tersedia untuk penyuntingan.
 - [Sumber dan lisensi aset](docs/ASSETS.md) memuat sumber ruang, avatar, fon, audio, dan aset tim.
+- [Naskah dan suara karakter](docs/SUARA-KARAKTER.md) menjelaskan audio offline, penggantian suara, dan pengaturan relay live.
 
 Jalur Quest memakai Android ARM64 dan OpenXR. Modul Android Build Support, SDK/NDK, dan OpenJDK diperlukan untuk **Build Quest APK**. Verifikasi headset fisik masih perlu dilakukan.

@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f7f6f1">
+  <title>Audisi suara · NARA XR</title>
+  <style>
+    @font-face{font-family:Inter;src:url("../../NARA/Assets/FinalProject/Resources/Nara/Fonts/Inter-Regular.ttf") format("truetype");font-weight:400;font-display:swap}
+    @font-face{font-family:Inter;src:url("../../NARA/Assets/FinalProject/Resources/Nara/Fonts/Inter-Bold.ttf") format("truetype");font-weight:700;font-display:swap}
+    :root{color-scheme:light;--paper:#f7f6f1;--ink:#201f24;--mute:#58575d;--rule:#d8d6d1;--violet:#6249c0;--dark:#282235;--pale:#ece7f8}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--paper);color:var(--ink);font:1rem/1.5 Inter,system-ui,sans-serif}
+    button,input,select{font:inherit;color:inherit}
+    button,a,select{touch-action:manipulation}
+    button{cursor:pointer}
+    a{color:inherit;text-underline-offset:.23em}
+    button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,audio:focus-visible,[tabindex]:focus-visible{outline:3px solid #956ced;outline-offset:3px}
+    [hidden]{display:none!important}
+    .shell{max-width:1312px;margin:0 auto;padding:0 clamp(20px,5vw,76px) 32px}
+    .mast{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--rule);padding:23px 0;gap:15px}
+    .brand{display:flex;align-items:center;gap:10px;font-size:.98rem;font-weight:700;letter-spacing:.02em}
+    .mark{display:inline-flex;align-items:center;justify-content:center;gap:2px;width:28px;height:28px;background:var(--violet);border-radius:4px}
+    .mark i{display:block;width:2px;background:#fff;height:7px}.mark i:nth-child(2){height:13px}.mark i:nth-child(3){height:17px}.mark i:nth-child(4){height:10px}
+    .mast-meta,.count{color:var(--mute);font-size:.85rem}
+    h1,h2,p{margin:0}
+    h1{font-size:clamp(3rem,6.8vw,5.9rem);line-height:1;letter-spacing:-.08em;padding:clamp(24px,4vw,54px) 0 clamp(22px,3.5vw,42px)}
+    .layout{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:clamp(28px,5vw,76px);align-items:start}
+    .console{position:sticky;top:20px}
+    .panel{background:var(--dark);color:#fcfbff;border-radius:4px;padding:clamp(22px,3vw,38px);box-shadow:inset 0 4px 0 #ac94f4}
+    .panel-top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+    .label{display:flex;align-items:center;gap:8px;font-size:.8rem;color:#e0d8ef}
+    .label svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8}
+    #state{font-size:.76rem;color:#d2c2f6}
+    #person{font-size:clamp(2.3rem,4.6vw,3.8rem);line-height:1.07;letter-spacing:-.065em;margin-top:clamp(26px,4vw,58px);overflow-wrap:anywhere}
+    #casting{margin:9px 0 25px;color:#e2dae9;font-size:1rem}
+    .langs{display:inline-flex;flex-wrap:wrap;gap:2px;background:#393145;border:1px solid #5a4f69;border-radius:5px;padding:3px}
+    .langs button{border:0;border-radius:3px;background:transparent;color:#eeeaf5;padding:7px 12px;min-height:38px;font-size:.83rem}
+    .langs button[aria-pressed=true]{background:#eee8ff;color:#302345;font-weight:700}
+    .langs button:hover:not([aria-pressed=true]){background:#4c425b}
+    .sample-options{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px}
+    .offline-option{display:inline-flex;align-items:center;gap:7px;min-height:44px;color:#eeeaf5;font-size:.83rem;cursor:pointer}
+    .offline-option input{width:16px;height:16px;min-height:0;margin:0;accent-color:#bea6ff;padding:0}
+    audio{width:100%;display:block;margin:20px 0;min-height:54px;color-scheme:light}
+    .resources{display:flex;gap:12px 25px;border-top:1px solid #544a60;padding-top:16px;flex-wrap:wrap;font-size:.84rem;color:#eee9f6}
+    .resources a{display:inline-flex;align-items:center;gap:5px;min-height:32px}
+    .resources a::after{content:"↗";font-size:.92em;text-decoration:none}
+    .source{margin:12px 0 0;color:var(--mute);font-size:.8rem}
+    .error{color:#ffe4ab;font-size:.87rem;margin:-4px 0 15px}
+    .directory-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+    .directory-head h2{font-size:1.5rem;letter-spacing:-.055em;line-height:1.25}
+    .filters{display:flex;gap:10px;margin:16px 0 16px}
+    .search{position:relative;flex:1;min-width:0}
+    .search svg{position:absolute;width:17px;height:17px;left:12px;top:50%;transform:translateY(-50%);color:var(--mute);fill:none;stroke:currentColor;stroke-width:1.8;pointer-events:none}
+    input,select{min-height:43px;border:1px solid #c9c7c1;border-radius:4px;background:transparent;font-size:.86rem}
+    input{width:100%;padding:8px 10px 8px 38px}
+    input::placeholder{color:#6c6972;opacity:1}
+    select{max-width:43%;padding:7px 6px}
+    .list{margin:0;padding:0;list-style:none;border-top:1px solid var(--rule)}
+    .list li{border-bottom:1px solid var(--rule)}
+    .row{border:0;text-align:left;display:flex;align-items:center;gap:13px;width:100%;padding:12px 13px;min-height:62px;background:transparent;color:var(--ink);border-inline-start:3px solid transparent}
+    .row:hover{background:#efede8}
+    .row[aria-current=true]{background:var(--pale);border-inline-start-color:var(--violet);color:#35244d}
+    .row:focus-visible{outline-offset:-3px}
+    .icon{flex:0 0 29px;height:29px;border:1px solid #c4c0c7;border-radius:50%;display:grid;place-items:center;color:#534a60}
+    .icon::before{content:"";border-left:7px solid currentColor;border-top:4px solid transparent;border-bottom:4px solid transparent;transform:translateX(1px)}
+    .row[aria-current=true] .icon{background:var(--violet);color:white;border-color:var(--violet)}
+    .row[data-playing=true] .icon::before{width:3px;height:9px;border:0;border-left:3px solid currentColor;border-right:3px solid currentColor;transform:none}
+    .person-name{font-weight:700;letter-spacing:-.03em;font-size:.98rem;flex:1}
+    .role{font-size:.82rem;color:var(--mute);white-space:nowrap}
+    #empty{padding:20px 4px;color:var(--mute);font-size:.9rem}
+    .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+    @media(max-width:730px){
+      .shell{max-width:620px}.mast{padding:14px 0}.layout{grid-template-columns:minmax(0,1fr);gap:27px}.console{position:static}
+      h1{font-size:clamp(2.75rem,10vw,4rem);padding:22px 0}
+      .panel{padding:20px}#person{font-size:clamp(2rem,8vw,3rem);margin-top:16px}#casting{margin:4px 0 12px}
+      audio{margin:12px 0}.resources{padding-top:9px}.source{margin-top:8px}
+      .list{max-height:58vh;overflow:auto;scrollbar-color:#a398b5 transparent}
+    }
+    @media(max-width:350px){.shell{padding-inline:12px}.mast-meta{font-size:.76rem}.filters{flex-wrap:wrap}.search{flex-basis:100%}select{max-width:100%}}
+  </style>
+</head>
+<body>
+<main class="shell">
+  <header class="mast">
+    <div class="brand"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>NARA XR</div>
+    <span class="mast-meta">24 karakter · 6 cadangan</span>
+  </header>
+  <h1>Audisi suara</h1>
+  <noscript>Aktifkan JavaScript untuk memilih dan memutar demo pemeran.</noscript>
+  <div class="layout">
+    <section class="console" aria-label="Pemutar demo">
+      <div class="panel">
+        <div class="panel-top">
+          <span class="label"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 14v-3a9 9 0 0 1 18 0v3M3 13h3v7H4a2 2 0 0 1-2-2v-4a1 1 0 0 1 1-1Zm18 0h-3v7h2a2 2 0 0 0 2-2v-4a1 1 0 0 0-1-1Z"/></svg> Demo pemeran</span>
+          <span id="state"></span>
+        </div>
+        <h2 id="person">Memuat katalog…</h2>
+        <p id="casting"></p>
+        <div class="sample-options">
+          <div class="langs" role="group" aria-label="Bahasa demo">
+            <button type="button" data-lang="id" aria-pressed="true">Indonesia</button>
+            <button type="button" data-lang="en" aria-pressed="false">Inggris</button>
+          </div>
+          <label class="offline-option" id="offlineOption" hidden>
+            <input id="offline" type="checkbox"> Cuplikan offline
+          </label>
+        </div>
+        <audio id="audio" controls preload="none" aria-label="Demo suara"></audio>
+        <p class="error" id="error" role="status" hidden></p>
+        <div class="resources">
+          <a id="profile" target="_blank" rel="noopener">Profil pemeran</a>
+          <a id="direct" target="_blank" rel="noopener">Buka audio asli</a>
+        </div>
+      </div>
+      <p class="source">Cuplikan offline berdurasi 4–10 detik. Demo lengkap dari Indovoiceover memakai internet.</p>
+    </section>
+    <section aria-labelledby="directory">
+      <div class="directory-head"><h2 id="directory">Daftar pemeran</h2><span class="count" id="count" aria-live="polite"></span></div>
+      <div class="filters">
+        <label class="search"><span class="sr">Cari nama pemeran atau karakter</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="6.5"></circle><path d="m15 15 6 6"></path></svg>
+          <input id="query" type="search" placeholder="Cari nama" autocomplete="off">
+        </label>
+        <select id="gender" aria-label="Gender pemeran"><option value="">Semua gender</option><option>Perempuan</option><option>Laki-laki</option></select>
+      </div>
+      <ul class="list" id="list"></ul>
+      <p id="empty" hidden></p>
+    </section>
+  </div>
+</main>
+<script src="voices.js"></script>
+<script>
+  'use strict';
+  const voices = typeof NARA_VOICES === 'undefined' ? [] : NARA_VOICES;
+  const el = id => document.getElementById(id);
+  const audio = el('audio');
+  const buttons = new Map();
+  let person = voices.find(voice => voice.name === 'Anita Ardhiani') || voices[0];
+  let lang = 'id';
+  let revision = 0;
+
+  function syncPlayback() {
+    if (!person) return;
+    const playing = !audio.paused && !audio.ended;
+    el('state').textContent = playing ? 'Memutar' : audio.ended ? 'Selesai' : audio.currentTime > 0 ? 'Dijeda' : '';
+    for (const [voice, button] of buttons) {
+      const selected = voice === person;
+      button.setAttribute('aria-current', String(selected));
+      button.dataset.playing = String(selected && playing);
+      const action = selected && playing ? 'Jeda' : 'Putar';
+      button.setAttribute('aria-label', action + ' ' + voice.name + ', ' + voice.role);
+    }
+  }
+
+  function showError(message) {
+    el('error').textContent = message;
+    el('error').hidden = !message;
+  }
+
+  function playbackError() {
+    return !el('offlineOption').hidden && el('offline').checked
+      ? 'Cuplikan offline belum tersedia. Matikan pilihan itu untuk membuka demo lengkap.'
+      : 'Demo belum bisa diputar. Coba buka audio asli atau profil pemeran.';
+  }
+
+  function play() {
+    const current = revision;
+    showError('');
+    audio.play().catch(error => {
+      if (current !== revision || error.name === 'AbortError') return;
+      showError(playbackError());
+      syncPlayback();
+    });
+  }
+
+  function loadVoice(autoplay) {
+    revision++;
+    audio.pause();
+    showError('');
+    el('person').textContent = person.name;
+    el('casting').textContent = (person.role === 'Cadangan' ? 'Cadangan' : 'Untuk ' + person.role) + ' · ' + person.gender;
+    el('profile').href = person.profile;
+    const preview = lang === 'en' ? person.localEn : person.local;
+    el('offlineOption').hidden = !preview;
+    for (const option of document.querySelectorAll('[data-lang]')) {
+      option.setAttribute('aria-pressed', String(lang === option.dataset.lang));
+    }
+    el('direct').href = person[lang];
+    audio.setAttribute('aria-label', 'Demo ' + person.name + ' dalam bahasa ' + (lang === 'en' ? 'Inggris' : 'Indonesia'));
+    audio.src = preview && el('offline').checked ? preview : person[lang];
+    audio.load();
+    syncPlayback();
+    if (autoplay) play();
+  }
+
+  function choose(voice) {
+    if (person === voice) {
+      if (audio.paused) play();
+      else audio.pause();
+      return;
+    }
+    person = voice;
+    loadVoice(true);
+  }
+
+  function drawList() {
+    const query = el('query').value.trim().toLocaleLowerCase('id');
+    const gender = el('gender').value;
+    let visible = 0;
+    for (const [voice, button] of buttons) {
+      const matches = (!gender || voice.gender === gender) &&
+        (voice.name + ' ' + voice.role).toLocaleLowerCase('id').includes(query);
+      button.parentElement.hidden = !matches;
+      if (matches) visible++;
+    }
+    el('count').textContent = visible === voices.length ? visible + ' pemeran' : visible + ' dari ' + voices.length;
+    el('empty').hidden = visible > 0;
+    el('empty').textContent = voices.length ? 'Pemeran tidak ditemukan. Coba nama atau filter lain.' : 'Katalog gagal dimuat. Simpan voices.js di folder yang sama dengan halaman ini.';
+  }
+
+  for (const voice of voices) {
+    const li = document.createElement('li');
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'row';
+    const icon = document.createElement('span');
+    icon.className = 'icon';
+    icon.setAttribute('aria-hidden','true');
+    const name = document.createElement('span');
+    name.className = 'person-name';
+    name.textContent = voice.name;
+    const role = document.createElement('span');
+    role.className = 'role';
+    role.textContent = voice.role;
+    button.append(icon, name, role);
+    button.addEventListener('click', () => choose(voice));
+    buttons.set(voice, button);
+    li.append(button);
+    el('list').append(li);
+  }
+  for (const button of document.querySelectorAll('[data-lang]')) {
+    button.disabled = !person;
+    button.addEventListener('click', () => {
+      if (lang === button.dataset.lang) return;
+      const autoplay = !audio.paused;
+      lang = button.dataset.lang;
+      loadVoice(autoplay);
+    });
+  }
+  for (const event of ['play', 'playing', 'pause', 'ended']) audio.addEventListener(event, syncPlayback);
+  audio.addEventListener('error', () => {
+    if (audio.error) showError(playbackError());
+  });
+  el('query').addEventListener('input', drawList);
+  el('gender').addEventListener('change', drawList);
+  el('offline').addEventListener('change', () => loadVoice(!audio.paused));
+  drawList();
+  if (person) loadVoice(false);
+  else el('person').textContent = 'Katalog belum tersedia';
+</script>
+</body>
+</html>

@@ -12,7 +12,7 @@ namespace Nara.Practice
         readonly List<XRInputSubsystem> inputs = new();
         NaraPractice app;
         PracticeView view;
-        bool lastA, lastB, lastY, lastRightGrip, lastLeftGrip, lastSkip;
+        bool lastA, lastB, lastX, lastY, lastRightGrip, lastLeftGrip, lastSkip;
         float yaw, pitch, holdToEnd, framingYaw, framingVelocity;
         public bool Active { get; private set; }
 
@@ -165,7 +165,12 @@ namespace Nara.Practice
                     app.Replay();
             }
             if (rightGrip && !lastRightGrip)
-                app.BeginTalk();
+            {
+                if (picking)
+                    view.PreviewSelectedAvatar();
+                else
+                    app.BeginTalk();
+            }
             if (!rightGrip && lastRightGrip)
                 app.EndTalk();
             if (!picking && skip && !lastSkip)
@@ -175,7 +180,9 @@ namespace Nara.Practice
                 else
                     app.Answer("", true);
             }
-            if (x && app.Session.Phase != PracticePhase.Setup)
+            if (picking && x && !lastX)
+                view.CycleAvatarGender();
+            if (x && !setup)
             {
                 holdToEnd += Time.unscaledDeltaTime;
                 if (holdToEnd >= 1f)
@@ -187,6 +194,7 @@ namespace Nara.Practice
             }
             lastA = a;
             lastB = b;
+            lastX = x;
             lastY = y;
             lastRightGrip = rightGrip;
             lastLeftGrip = leftGrip;
