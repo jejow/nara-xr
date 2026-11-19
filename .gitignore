@@ -1,0 +1,24 @@
+# Unity editor and player output
+/NARA/[Ll]ibrary/
+/NARA/[Tt]emp/
+/NARA/[Oo]bj/
+/NARA/[Ll]ogs/
+/NARA/[Uu]ser[Ss]ettings/
+/NARA/[Bb]uild*/
+/NARA/.vs/
+/NARA/*.csproj
+/NARA/*.sln
+/NARA/*.slnx
+
+# Local configuration and working files
+.env
+.env.*
+backend.json
+practice.json
+__pycache__/
+*.pyc
+*.log
+*.blend1
+*.blend2
+.DS_Store
+Thumbs.db

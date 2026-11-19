@@ -1,0 +1,34 @@
+{
+  "lines": [
+    {
+      "key": "question_1",
+      "id": "Apa masalah utama yang ingin kamu selesaikan, dan siapa yang paling terdampak?",
+      "en": "What problem are you trying to solve, and who is most affected?"
+    },
+    {
+      "key": "question_2",
+      "id": "Bagaimana kamu akan mengetahui bahwa usulanmu berhasil?",
+      "en": "How will you know if your proposal works?"
+    },
+    {
+      "key": "feedback",
+      "id": "Pada latihan berikutnya, tambahkan satu contoh yang menunjukkan manfaat usulanmu bagi pengguna.",
+      "en": "In your next rehearsal, add one example that shows how your proposal helps its users."
+    },
+    {
+      "key": "connection",
+      "id": "Koneksi terputus. Coba jelaskan satu pesan utama presentasimu.",
+      "en": "The connection is down. Explain the main point of your presentation."
+    },
+    {
+      "key": "timeout",
+      "id": "Jawabannya belum masuk. Coba tambahkan satu alasan atau contoh untuk jawabanmu tadi.",
+      "en": "The reply has not arrived. Add one reason or example to your last answer."
+    },
+    {
+      "key": "unusable",
+      "id": "Coba tekan tombol bicara lagi. Ulangi jawabanmu dalam satu kalimat.",
+      "en": "Press the talk button again. Repeat your answer in one sentence."
+    }
+  ]
+}

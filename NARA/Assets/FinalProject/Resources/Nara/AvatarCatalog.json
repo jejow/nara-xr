@@ -1,0 +1,100 @@
+{
+  "entries": [
+    {
+      "id": "Female_Adult_01",
+      "label": "Nadia"
+    },
+    {
+      "id": "Male_Adult_01",
+      "label": "Raka"
+    },
+    {
+      "id": "Female_Adult_02",
+      "label": "Maya"
+    },
+    {
+      "id": "Male_Adult_02",
+      "label": "Dimas"
+    },
+    {
+      "id": "Female_Adult_03",
+      "label": "Sari"
+    },
+    {
+      "id": "Male_Adult_03",
+      "label": "Niko"
+    },
+    {
+      "id": "Female_Adult_04",
+      "label": "Dian"
+    },
+    {
+      "id": "Male_Adult_04",
+      "label": "Arman"
+    },
+    {
+      "id": "Female_Adult_05",
+      "label": "Kirana"
+    },
+    {
+      "id": "Male_Adult_05",
+      "label": "Bima"
+    },
+    {
+      "id": "Female_Adult_06",
+      "label": "Alma"
+    },
+    {
+      "id": "Male_Adult_06",
+      "label": "Aditya"
+    },
+    {
+      "id": "Female_Adult_07",
+      "label": "Vina"
+    },
+    {
+      "id": "Male_Adult_07",
+      "label": "Galih"
+    },
+    {
+      "id": "Female_Adult_08",
+      "label": "Rena"
+    },
+    {
+      "id": "Male_Adult_08",
+      "label": "Rizky"
+    },
+    {
+      "id": "Female_Adult_09",
+      "label": "Lina"
+    },
+    {
+      "id": "Male_Adult_09",
+      "label": "Fajar"
+    },
+    {
+      "id": "Female_Adult_10",
+      "label": "Ratri"
+    },
+    {
+      "id": "Male_Adult_10",
+      "label": "Ari"
+    },
+    {
+      "id": "Female_Adult_11",
+      "label": "Tara"
+    },
+    {
+      "id": "Male_Adult_11",
+      "label": "Rio"
+    },
+    {
+      "id": "Female_Adult_12",
+      "label": "Dewi"
+    },
+    {
+      "id": "Male_Adult_12",
+      "label": "Bagas"
+    }
+  ]
+}
