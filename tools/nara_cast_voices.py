@@ -47,14 +47,14 @@ class CastSpeech:
                 (first.ttl + rest[0].ttl) * .5, (first.dp + rest[0].dp) * .5)
         return self.styles[name]
 
-    def speak(self, profile, text, language):
+    def speak(self, profile, text, language, *, steps=STEPS):
         import numpy as np
 
         seed = int(sha256((profile["id"] + language + text).encode()).hexdigest()[:8], 16)
         np.random.seed(seed)
         audio, duration = self.tts.synthesize(
             text, voice_style=self.style(profile["voiceStyle"]), lang=language,
-            speed=profile["voiceRate"], total_steps=STEPS,
+            speed=profile["voiceRate"], total_steps=steps,
         )
         length = round(self.tts.sample_rate * float(np.asarray(duration).item()))
         return wav_bytes(audio.reshape(-1)[:length], self.tts.sample_rate)

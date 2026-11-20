@@ -12,6 +12,11 @@ namespace Nara.Practice
         public static readonly Vector2 DesktopSize = new(1440, 900);
         public static readonly Vector2 HeadsetSize = new(960, 600);
         public const float HeadsetScale = .00125f;
+        internal const string ModePreference = "Nara.Practice.Laptop";
+        internal const string LanguagePreference = "Nara.Practice.English";
+        internal const string VoicePreference = "Nara.Practice.LiveVoice";
+        const string LiveDataNotice = "Mode live mengirim teks slide, penjelasan, dan jawaban ke layanan AI.";
+        internal const string MetricsPreference = "Nara.Practice.LogMetrics";
 
         static readonly Color Navy = new Color32(13, 16, 26, 255);
         static readonly Color Dark = new Color32(23, 27, 42, 255);
@@ -28,13 +33,16 @@ namespace Nara.Practice
         Font regular, bold;
         Sprite rounded;
         Canvas canvas;
+        internal Canvas ControlsCanvas => canvas;
         CanvasScaler scaler;
         RectTransform desktopRoot, headsetRoot;
         InputField topic, summary, answer;
         bool cloud, metrics, baseline, english, xrView;
         PracticePhase previousPhase = PracticePhase.Setup;
 
-        public bool Editing => topic && (topic.isFocused || summary.isFocused || answer.isFocused);
+        public bool Editing => topic && (topic.isFocused || summary.isFocused || answer.isFocused || writtenPresentation.isFocused);
+        internal bool AnswerInProgress => answer && (answer.isFocused || !string.IsNullOrWhiteSpace(answer.text));
+        string HostName => app.audience.ProfileAt(app.HostSeat).label;
 
         public void Initialise(NaraPractice practice)
         {
@@ -56,6 +64,7 @@ namespace Nara.Practice
             BuildDesktop(root);
             headsetRoot = Centered(root, "Panel headset", HeadsetSize);
             BuildHeadset(headsetRoot);
+            BuildSpeechBubble();
             LoadSetup();
             Refresh();
         }
@@ -66,13 +75,15 @@ namespace Nara.Practice
                 return;
             topic.text = app.Deck.Topic;
             summary.text = app.Deck.Summary;
-            english = app.Deck.Language == "en";
+            baseline = PlayerPrefs.GetInt(ModePreference) == 1;
+            english = PlayerPrefs.GetInt(LanguagePreference, app.Deck.Language == "en" ? 1 : 0) == 1;
+            cloud = app.HasEndpoint && PlayerPrefs.GetInt(VoicePreference) == 1;
+            metrics = PlayerPrefs.GetInt(MetricsPreference) == 1;
             answer.text = "";
         }
 
         public void ReturnToSetup()
         {
-            cloud = metrics = avatarPickerOpen = false;
             desktopSection = DesktopSection.Start;
             LoadSetup();
             ClearFocus();
@@ -81,6 +92,8 @@ namespace Nara.Practice
 
         public void Begin()
         {
+            if (app.LoadingClassroom || app.ImportingDeck)
+                return;
             if (!xrView && desktopSection != DesktopSection.Start)
             {
                 SetDesktopSection(DesktopSection.Start);
@@ -93,22 +106,44 @@ namespace Nara.Practice
                     topic.ActivateInputField();
                 return;
             }
-            app.StartPractice(topic.text, summary.text, english ? "en" : "id", baseline, cloud, metrics);
-            avatarPickerOpen = false;
+            app.StartPractice(topic.text, summary.text, english ? "en" : "id", baseline && !xrView, cloud, metrics);
             ClearFocus();
             Refresh();
         }
 
-        public void ToggleLanguage() => english = !english;
-        public void ToggleMetrics() => metrics = !metrics;
+        internal void RestoreDraft(string draftTopic, string draftSummary)
+        {
+            topic.SetTextWithoutNotify(draftTopic);
+            summary.SetTextWithoutNotify(draftSummary);
+            Refresh();
+        }
+
+        public void SelectClassroom(bool useIf101) => app.SelectClassroom(useIf101, topic.text, summary.text);
+
+        public void ToggleClassroom() => SelectClassroom(!app.IsIf101);
+
+        public void ToggleLanguage() => SavePreference(LanguagePreference, english = !english);
+        public void ToggleMetrics() => SavePreference(MetricsPreference, metrics = !metrics);
 
         public void ToggleCloud()
         {
             if (app.HasEndpoint)
-                cloud = !cloud;
+                SavePreference(VoicePreference, cloud = !cloud);
         }
 
-        public void SelectBaseline() => baseline = !baseline && !xrView;
+        public void SetBaseline(bool useLaptop)
+        {
+            if (!xrView)
+                SavePreference(ModePreference, baseline = useLaptop);
+        }
+
+        public void SelectBaseline() => SetBaseline(!baseline);
+
+        static void SavePreference(string key, bool enabled)
+        {
+            PlayerPrefs.SetInt(key, enabled ? 1 : 0);
+            PlayerPrefs.Save();
+        }
 
         public void Submit()
         {
@@ -138,7 +173,6 @@ namespace Nara.Practice
             var rect = (RectTransform)canvas.transform;
             if (active)
             {
-                baseline = false;
                 canvas.renderMode = RenderMode.WorldSpace;
                 canvas.worldCamera = app.practiceCamera;
                 scaler.enabled = false;
@@ -155,6 +189,7 @@ namespace Nara.Practice
                 canvas.renderMode = RenderMode.ScreenSpaceOverlay;
                 scaler.enabled = true;
             }
+            SetSpeechMode();
             Refresh();
         }
 
@@ -190,6 +225,9 @@ namespace Nara.Practice
             PracticePhase state = app.Session.Phase;
             if (state != previousPhase)
             {
+                if (state != PracticePhase.Presentation)
+                    composingPresentation = false;
+                readingPage = 0;
                 if (state is not (PracticePhase.Asking or PracticePhase.Question))
                     answer.text = "";
                 ClearFocus();
@@ -199,6 +237,7 @@ namespace Nara.Practice
             Show(desktopBackdrop, !xrView && (state == PracticePhase.Review || app.Baseline));
             Show(preparationShade, !xrView && state == PracticePhase.Setup);
             Show(headsetRoot, xrView);
+            RefreshSpeechBubble(state);
             if (xrView)
                 RefreshHeadset(state);
             else
@@ -214,12 +253,16 @@ namespace Nara.Practice
         string QuestionText(PracticePhase state) => state switch
         {
             PracticePhase.FloorRequest => app.QuestionerName + (app.Baseline ? " meminta giliran bertanya." : " mengangkat tangan."),
+            PracticePhase.Asking or PracticePhase.Question when measuredSpeech == app.Session.Question => SpokenPage,
             PracticePhase.Asking or PracticePhase.Question => app.Session.Question,
+            PracticePhase.Waiting when app.PreparingTranscript => "Membaca rekaman…",
+            PracticePhase.Waiting when app.Session.Operation == PracticeSession.Feedback => "Menyiapkan saran…",
             _ => "Menyiapkan pertanyaan…"
         };
 
         string QuestionStatus(PracticePhase state) => state switch
         {
+            PracticePhase.FloorRequest when !app.Baseline => NaraAudience.SeatLabel(app.QuestionerSeat),
             PracticePhase.FloorRequest => "Permintaan giliran",
             PracticePhase.Asking => app.QuestionerName + " sedang bertanya",
             PracticePhase.Question => app.Recording ? "Mikrofon aktif" : "Giliranmu menjawab",
@@ -424,16 +467,4 @@ namespace Nara.Practice
         }
     }
 
-    public sealed class HoldToTalk : MonoBehaviour, IPointerDownHandler, IPointerUpHandler
-    {
-        public NaraPractice App { private get; set; }
-
-        public void OnPointerDown(PointerEventData eventData)
-        {
-            if (GetComponent<Button>().interactable && eventData.button == PointerEventData.InputButton.Left)
-                App.BeginTalk();
-        }
-
-        public void OnPointerUp(PointerEventData eventData) => App.EndTalk();
-    }
 }

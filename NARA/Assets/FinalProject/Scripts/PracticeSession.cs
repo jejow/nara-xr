@@ -22,9 +22,13 @@ namespace Nara.Practice
         public string topic;
         public string summary;
         public string presentation;
+        public string writtenPresentation;
+        public DeckPage[] slides;
+        public int[] presentedPages;
         public string question;
         public string answer;
         public string audio;
+        public bool deferAudio;
         public Exchange[] history;
     }
 
@@ -36,6 +40,7 @@ namespace Nara.Practice
         public string transcript;
         public string anchor;
         public string audio;
+        public bool audioDeferred;
         public string source;
         public string speaker;
     }
@@ -50,11 +55,14 @@ namespace Nara.Practice
         public const string FollowUp = "follow_up";
 
         readonly List<Exchange> history = new(3);
+        readonly List<int> visited = new();
+        DeckPage[] pages = Array.Empty<DeckPage>();
 
         public PracticePhase Phase { get; private set; }
         public string Topic { get; private set; }
         public string Summary { get; private set; }
         public string Presentation { get; set; }
+        public string WrittenPresentation { get; private set; }
         public string Operation { get; private set; }
         public string Question { get; private set; }
         public string Suggestion { get; private set; }
@@ -67,12 +75,31 @@ namespace Nara.Practice
         public float Elapsed { get; private set; }
         public float Remaining => Math.Max(0, Duration - Elapsed);
 
-        public void Start(string topic, string summary)
+        public void Start(string topic, string summary, DeckPage[] material)
         {
             Reset();
             Topic = topic.Trim();
             Summary = summary.Trim();
             Phase = PracticePhase.Presentation;
+            int perPage = Math.Min(1500, 15_000 / Math.Max(1, material.Length));
+            pages = Array.ConvertAll(material, page => new DeckPage
+            {
+                page = page.page,
+                text = page.text?.Substring(0, Math.Min(page.text.Length, perPage)) ?? ""
+            });
+            VisitPage(1);
+        }
+
+        public void VisitPage(int page)
+        {
+            if (Phase == PracticePhase.Presentation && page >= 1 && page <= pages.Length && !visited.Contains(page))
+                visited.Add(page);
+        }
+
+        public void WritePresentation(string text)
+        {
+            if (Phase == PracticePhase.Presentation)
+                WrittenPresentation = text;
         }
 
         public void Tick(float delta)
@@ -108,12 +135,12 @@ namespace Nara.Practice
                 WaitFor(IsFollowUp || skipped ? Feedback : AfterSecond);
         }
 
-        public void SetLatestTranscript(string transcript)
+        public void SetLatestTranscript(string operation, string transcript)
         {
             string text = (transcript ?? "").Trim();
             if (text.Length == 0)
                 return;
-            if (Operation == FirstQuestion)
+            if (operation == FirstQuestion)
                 Presentation = text;
             else if (history.Count > 0)
                 history[history.Count - 1].answer = text;
@@ -197,6 +224,9 @@ namespace Nara.Practice
                 topic = Topic,
                 summary = Summary,
                 presentation = Presentation,
+                writtenPresentation = WrittenPresentation,
+                slides = pages,
+                presentedPages = visited.ToArray(),
                 question = latest?.question ?? "",
                 answer = latest?.answer ?? "",
                 audio = audio == null ? "" : Convert.ToBase64String(audio),
@@ -207,11 +237,13 @@ namespace Nara.Practice
         public void Reset()
         {
             Phase = PracticePhase.Setup;
-            Topic = Summary = Presentation = Operation = Question = Suggestion = "";
+            Topic = Summary = Presentation = WrittenPresentation = Operation = Question = Suggestion = "";
             Elapsed = 0;
             MainQuestions = Attempts = Skips = 0;
             Paused = IsFollowUp = FollowUpAsked = false;
             history.Clear();
+            visited.Clear();
+            pages = Array.Empty<DeckPage>();
         }
 
         void WaitFor(string operation)

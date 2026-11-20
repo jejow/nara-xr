@@ -20,17 +20,17 @@ namespace Nara.Practice.Editor
                 throw new BuildFailedException("Expected distinct Rocketbox profiles.");
             Directory.CreateDirectory(Prefabs);
             AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
-            int[] counts = profiles.Select(profile =>
+            int[] counts = profiles.Select((profile, index) =>
             {
                 var existing = onlyMissing
                     ? AssetDatabase.LoadAssetAtPath<GameObject>($"{Prefabs}/{profile.id}.prefab")?.GetComponent<NaraAvatarPuppet>()
                     : null;
-                return existing ? existing.Triangles : BuildPrefab(profile);
+                return existing ? existing.Triangles : BuildPrefab(profile, index);
             }).OrderByDescending(value => value).ToArray();
-            return counts.Take(NaraAudience.SeatCount).Sum();
+            return counts.Take(NaraAudience.ClassroomSeatCount).Sum();
         }
 
-        static int BuildPrefab(AvatarProfile profile)
+        static int BuildPrefab(AvatarProfile profile, int index)
         {
             string directory = $"{Source}/{profile.id}";
             string path = $"{directory}/Actor.fbx";
@@ -50,7 +50,7 @@ namespace Nara.Practice.Editor
                     render.shadowCastingMode = ShadowCastingMode.On;
                 }
                 var puppet = root.AddComponent<NaraAvatarPuppet>();
-                puppet.FitToSeat(skinned.transform);
+                puppet.FitToSeat(skinned.transform, index);
                 if (puppet.Triangles is < 3000 or > 20000)
                     throw new BuildFailedException($"Invalid triangle count in {profile.id}: {puppet.Triangles}.");
                 ValidateSeatedMesh(skinned, puppet, profile.id);
@@ -127,20 +127,17 @@ namespace Nara.Practice.Editor
             return mat;
         }
 
-        public static NaraAudience Install(Transform room, Vector3 presenter, Vector3 coach, Vector3 left, Vector3 right)
+        public static NaraAudience Install(Transform room, Vector3 roomForward, Vector3[] locations)
         {
             var root = new GameObject("Rocketbox audience").transform;
             root.SetParent(room, false);
             var audience = root.gameObject.AddComponent<NaraAudience>();
-            Vector3[] locations = { coach, left, right };
-            string[] names = { "NARA questioner", "Audience left", "Audience right" };
-            audience.seats = new Transform[NaraAudience.SeatCount];
+            audience.seats = new Transform[locations.Length];
             for (int i = 0; i < locations.Length; i++)
             {
-                Transform seat = new GameObject(names[i]).transform;
+                Transform seat = new GameObject(NaraAudience.SeatLabel(i)).transform;
                 seat.SetParent(root, false);
-                Vector3 awayFromPresenter = Vector3.ProjectOnPlane(locations[i] - presenter, Vector3.up);
-                seat.SetPositionAndRotation(locations[i], Quaternion.LookRotation(awayFromPresenter));
+                seat.SetPositionAndRotation(locations[i], Quaternion.LookRotation(roomForward));
                 audience.seats[i] = seat;
             }
 

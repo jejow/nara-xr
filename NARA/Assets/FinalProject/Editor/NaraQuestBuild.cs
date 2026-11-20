@@ -29,7 +29,8 @@ namespace Nara.Practice.Editor
                 throw new BuildFailedException("Switch the active platform to Android before building NARA.");
 
             ConfigureQuest();
-            if (AssetDatabase.LoadAssetAtPath<SceneAsset>(NaraPracticeBuild.ScenePath) == null)
+            if (!AssetDatabase.LoadAssetAtPath<SceneAsset>(NaraPracticeBuild.ScenePath) ||
+                !AssetDatabase.LoadAssetAtPath<SceneAsset>(NaraPracticeBuild.If101ScenePath))
                 NaraPracticeBuild.BuildScene();
             EditorUserBuildSettings.buildAppBundle = false;
             NaraPracticeBuild.Build(BuildTarget.Android, "BuildFinalProject/Quest/NARA.apk");

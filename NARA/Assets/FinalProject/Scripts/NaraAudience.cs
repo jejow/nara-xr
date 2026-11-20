@@ -1,6 +1,6 @@
 using System;
-using System.Collections.Generic;
 using UnityEngine;
+using Random = UnityEngine.Random;
 
 namespace Nara.Practice
 {
@@ -36,85 +36,142 @@ namespace Nara.Practice
 
     public sealed class NaraAudience : MonoBehaviour
     {
-        public const int SeatCount = 3;
-        public const int LeadSeat = 0;
-        const string Preference = "Nara.Audience.Seat.";
-        static readonly string[] Defaults = { "Female_Adult_13", "Male_Adult_04", "Female_Adult_06" };
+        public const int Rows = 4, SeatsPerRow = 6;
+        public const int ClassroomSeatCount = Rows * SeatsPerRow;
 
         public Transform[] seats;
-        readonly NaraAvatarPuppet[] actors = new NaraAvatarPuppet[SeatCount];
-        readonly int[] selected = new int[SeatCount];
+        NaraAvatarPuppet[] actors, pool;
+        Bounds?[] desks;
+        int[] selected, order;
+        int previousAttentionSeat = -1, seatingRound, slideChange;
+        float attentionChangedAt, slideChangedAt = -100;
+        Vector3 slideCenter;
         public AvatarProfile[] Profiles { get; private set; }
+        public int SeatCount => seats.Length;
         public Transform HeadAt(int seat) => seat >= 0 && seat < SeatCount && actors[seat] ? actors[seat].Head : null;
-        public int Selection(int seat) => selected[seat];
         public AvatarProfile ProfileAt(int seat) => Profiles[selected[seat]];
-        public int SeatOf(int profile) => Array.IndexOf(selected, profile);
+        public static string SeatLabel(int seat) => $"Baris {seat / SeatsPerRow + 1} · Kursi {seat % SeatsPerRow + 1}";
 
         public void Initialise()
         {
             Profiles = AvatarCatalog.Load().entries;
-            if (seats == null || seats.Length != SeatCount)
-                throw new InvalidOperationException("NARA needs three marked audience seats.");
-            var occupied = new HashSet<int>();
+            if (seats == null || seats.Length < 2 || seats.Length > Profiles.Length || Array.Exists(seats, seat => !seat))
+                throw new InvalidOperationException("NARA needs a marked seat for each audience member.");
+            actors = new NaraAvatarPuppet[SeatCount];
+            selected = new int[SeatCount];
+            pool = new NaraAvatarPuppet[Profiles.Length];
+            desks = FindSeatDesks();
+            order = new int[Profiles.Length];
+            for (int i = 0; i < order.Length; i++)
+                order[i] = i;
+            Shuffle();
+        }
+
+        internal Bounds?[] FindSeatDesks()
+        {
+            var result = new Bounds?[SeatCount];
+            foreach (BoxCollider top in transform.parent.GetComponentsInChildren<BoxCollider>(true))
+            {
+                if (!top.name.StartsWith("Table white trapezoidal top", StringComparison.Ordinal)) continue;
+                Bounds bounds = top.bounds;
+                int nearest = -1;
+                float distance = 1.2f * 1.2f;
+                for (int i = 0; i < SeatCount; i++)
+                {
+                    Vector3 delta = Vector3.ProjectOnPlane(bounds.center - seats[i].position, Vector3.up);
+                    if (Vector3.Dot(delta, -seats[i].forward) < .12f || delta.sqrMagnitude >= distance) continue;
+                    distance = delta.sqrMagnitude;
+                    nearest = i;
+                }
+                if (nearest >= 0) result[nearest] = bounds;
+            }
+            return result;
+        }
+
+        public void Shuffle()
+        {
+            seatingRound++;
+            previousAttentionSeat = -1;
+            slideChangedAt = -100;
+            foreach (NaraAvatarPuppet actor in actors)
+            {
+                if (actor)
+                    actor.gameObject.SetActive(false);
+            }
             for (int seat = 0; seat < SeatCount; seat++)
             {
-                string id = PlayerPrefs.GetString(Preference + seat, Defaults[seat]);
-                int index = Array.FindIndex(Profiles, item => item.id == id);
-                if (index < 0 || occupied.Contains(index))
-                    index = Array.FindIndex(Profiles, item => item.id == Defaults[seat]);
-                if (index < 0 || occupied.Contains(index))
-                {
-                    index = 0;
-                    while (occupied.Contains(index))
-                        index++;
-                }
-                occupied.Add(index);
-                actors[seat] = Spawn(seat, index);
-                selected[seat] = index;
+                int draw = Random.Range(seat, order.Length);
+                (order[seat], order[draw]) = (order[draw], order[seat]);
+                int profile = selected[seat] = order[seat];
+                NaraAvatarPuppet actor = pool[profile];
+                if (!actor)
+                    actor = pool[profile] = Spawn(seat, profile);
+                actor.transform.SetParent(seats[seat], false);
+                actor.transform.SetLocalPositionAndRotation(Vector3.zero, Quaternion.identity);
+                actor.gameObject.SetActive(true);
+                actor.SetDesk(desks[seat]);
+                actor.SetMotionProfile(profile, Time.unscaledTime, seat, seatingRound);
+                actors[seat] = actor;
             }
         }
 
-        public void Select(int seat, int index, bool save = true)
+        internal (int first, int second) DrawQuestionSeats()
         {
-            if (seat < 0 || seat >= SeatCount || index < 0 || index >= Profiles.Length || index == selected[seat])
+            int first = Random.Range(0, SeatCount);
+            int second = Random.Range(0, SeatCount - 1);
+            return (first, second < first ? second : second + 1);
+        }
+
+        public void SlideChanged(Vector3 position, float time)
+        {
+            slideCenter = position;
+            slideChangedAt = time;
+            slideChange++;
+        }
+
+        public void Animate(float time, bool listening, float audio, float articulation, int speakerSeat,
+            Vector3 presenterEyes, int focusSeat, bool raisesHand, float nod,
+            AudienceLine line = AudienceLine.Notice, float lineProgress = 0)
+        {
+            if (!isActiveAndEnabled)
                 return;
-            int other = Array.IndexOf(selected, index);
-            if (other >= 0)
+            int attentionSeat = speakerSeat >= 0 ? speakerSeat : raisesHand ? focusSeat : -1;
+            if (attentionSeat != previousAttentionSeat)
             {
-                (actors[seat], actors[other]) = (actors[other], actors[seat]);
-                (selected[seat], selected[other]) = (selected[other], selected[seat]);
-                MoveToSeat(actors[seat], seat);
-                MoveToSeat(actors[other], other);
+                previousAttentionSeat = attentionSeat;
+                attentionChangedAt = time;
             }
-            else
-            {
-                NaraAvatarPuppet next = Spawn(seat, index);
-                actors[seat].gameObject.SetActive(false);
-                Destroy(actors[seat].gameObject);
-                actors[seat] = next;
-                selected[seat] = index;
-            }
-            if (save)
-            {
-                for (int i = 0; i < SeatCount; i++)
-                    PlayerPrefs.SetString(Preference + i, Profiles[selected[i]].id);
-                PlayerPrefs.Save();
-            }
-        }
-
-        public void Animate(float time, float elapsed, bool listening, float audio, int speakerSeat,
-            Vector3 presenterEyes, int focusSeat, bool raisesHand, float nod)
-        {
-            Transform speaker = HeadAt(speakerSeat);
-            Vector3 speakerEyes = speaker ? speaker.position : presenterEyes;
+            Transform peer = HeadAt(attentionSeat);
+            float dt = Time.unscaledDeltaTime;
             for (int i = 0; i < SeatCount; i++)
             {
                 bool focused = i == focusSeat;
                 bool speaking = i == speakerSeat;
-                actors[i].Animate(time + i * 1.7f, elapsed, listening, speaking ? audio : 0, speaking,
-                    (speaking || (focused && !speaker)) ? presenterEyes : speakerEyes,
-                    focused && raisesHand, focused ? nod : 0);
+                float reactionDelay = .17f + Mathf.Repeat(selected[i] * .367f, 1) * .64f;
+                float interest = 0;
+                Vector3 target = presenterEyes;
+                if (peer && i != attentionSeat && CanTurnToward(i, peer.position))
+                {
+                    interest = Mathf.SmoothStep(0, 1, (time - attentionChangedAt - reactionDelay) / .45f);
+                    target = Vector3.Lerp(presenterEyes, peer.position, interest);
+                }
+                else if (!peer && listening && (i + slideChange) % 4 != 0)
+                {
+                    float elapsed = time - slideChangedAt - 1.55f * reactionDelay;
+                    float hold = 1.4f + 1.5f * Mathf.Repeat(selected[i] * .173f, 1);
+                    interest = Mathf.SmoothStep(0, 1, elapsed / .45f) * (1 - Mathf.SmoothStep(0, 1, (elapsed - hold) / .7f));
+                    target = Vector3.Lerp(presenterEyes, slideCenter, interest);
+                }
+                actors[i].Animate(time, dt, listening || interest > 0, speaking ? audio : 0, speaking, target,
+                    focused && raisesHand, focused ? nod : 0, speaking ? articulation : .5f, interest, line, lineProgress);
             }
+        }
+
+        bool CanTurnToward(int seat, Vector3 point)
+        {
+            Transform anchor = seats[seat];
+            Vector3 direction = Vector3.ProjectOnPlane(point - anchor.position, Vector3.up).normalized;
+            return Vector3.Dot(-anchor.forward, direction) > -.259f;
         }
 
         NaraAvatarPuppet Spawn(int seat, int index)
@@ -127,10 +184,5 @@ namespace Nara.Practice
             return Instantiate(prefab, seats[seat], false);
         }
 
-        void MoveToSeat(NaraAvatarPuppet actor, int seat)
-        {
-            actor.transform.SetParent(seats[seat], false);
-            actor.transform.SetLocalPositionAndRotation(Vector3.zero, Quaternion.identity);
-        }
     }
 }

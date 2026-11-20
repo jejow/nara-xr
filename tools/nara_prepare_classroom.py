@@ -1,4 +1,4 @@
-"""Fit the NARA panel and lectern into the texture-decoded tevy classroom."""
+"""Fit four classroom rows and an oak lectern into the tevy room."""
 
 import argparse
 import math
@@ -7,21 +7,17 @@ import sys
 
 import bpy
 from mathutils import Vector
+import numpy as np
 
 
-PRESENTER = (.18, 3.42, 1.64)
-SEATS = (
-    ("NaraLeftSeat", "Near chair", (-1.20, .46, 0)),
-    ("NaraCoachSeat", "Far chair", (.18, .60, 0)),
-    ("NaraRightSeat", "Near chair", (1.56, .46, 0)),
-)
-DESK_OFFSET = .94
-REAR_ROWS = (
-    (-1.57, (-2.37, -1.19, 1.19, 2.37)),
-    (-3.55, (-2.37, -1.19, 1.19)),
-)
-MONITOR_CENTER = (.18, 2.74, 1.156)
-MONITOR_NORMAL = Vector((0, .38, .925)).normalized()
+PRESENTER = (.18, 3.38, 1.69)
+ROWS = (.46, -.80, -2.06, -3.32)
+COLUMNS = (2.96, 2.00, 1.04, -1.04, -2.00, -2.96)
+DESK_OFFSET = .58
+DESK_SCALE = (.84, .72, 1)
+DESK_TOP = "Table white trapezoidal top"
+MONITOR_CENTER = (.18, 2.73, 1.151)
+MONITOR_NORMAL = Vector((0, .24, .971)).normalized()
 MONITOR_WIDTH = .422
 MONITOR_HEIGHT = MONITOR_WIDTH * 9 / 16
 SCREEN_WIDTH = 2.78
@@ -30,7 +26,7 @@ SCREEN_HEIGHT = SCREEN_WIDTH * 9 / 16
 # The projection wall is at +Y. The presenter looks toward -Y.
 MARKERS = {
     "NaraPresenter": PRESENTER,
-    "NaraSightline": (.18, .60, 1.20),
+    "NaraSightline": (0, -.35, 1.20),
     "NaraScreen": (.16, 3.865, 2.05),
     "NaraScreenEdge": (.16 + SCREEN_WIDTH / 2, 3.865, 2.05),
     "NaraLectern": (.18, 2.71, 0),
@@ -47,8 +43,7 @@ FURNITURE_MATERIALS = {
 }
 
 
-def append_furniture(path):
-    root_names = ("Table", "Near chair", "Far chair")
+def append_furniture(path, *root_names):
     collection = bpy.data.collections.new("Meja dan kursi Blender tim")
     bpy.context.scene.collection.children.link(collection)
     with bpy.data.libraries.load(str(path.resolve()), link=False) as (source, target):
@@ -58,16 +53,37 @@ def append_furniture(path):
         ]
     for obj in target.objects:
         collection.objects.link(obj)
-    for name in root_names:
-        if name not in collection.objects or not collection.objects[name].children:
-            raise RuntimeError(f"Furniture source is missing {name}.")
     bpy.ops.object.select_all(action="DESELECT")
-    curves = [obj for obj in collection.objects if obj.type == "CURVE"]
-    if curves:
-        for curve in curves:
-            curve.select_set(True)
-        bpy.context.view_layer.objects.active = curves[0]
-        bpy.ops.object.convert(target="MESH")
+    for root_name in root_names:
+        root = collection.objects.get(root_name)
+        if not root or not root.children:
+            raise RuntimeError(f"The team furniture source is missing {root_name}.")
+        for obj in list(root.children_recursive):
+            if root_name == "Near chair" and ("edge piping" in obj.name or "rubber foot" in obj.name):
+                bpy.data.objects.remove(obj, do_unlink=True)
+            else:
+                obj.select_set(True)
+    bpy.context.view_layer.objects.active = bpy.context.selected_objects[0]
+    bpy.ops.object.convert(target="MESH")
+    for obj in collection.objects:
+        if obj.type != "MESH":
+            continue
+        bpy.context.view_layer.objects.active = obj
+        decimate = obj.modifiers.new("Classroom mesh density", "DECIMATE")
+        if obj.name.startswith("Table "):
+            decimate.ratio = .62 if obj.name == DESK_TOP else .24
+        else:
+            decimate.ratio = .50 if "padded" in obj.name or "upholstered" in obj.name else .34
+        bpy.ops.object.modifier_apply(modifier=decimate.name)
+        if obj.name == DESK_TOP:
+            # The original top uses a flat color. Give its detail normal metric UVs.
+            uv = obj.data.uv_layers.active or obj.data.uv_layers.new(name="Laminate UV")
+            for face in obj.data.polygons:
+                normal = max(range(3), key=lambda axis: abs(face.normal[axis]))
+                axes = [axis for axis in range(3) if axis != normal]
+                for index in face.loop_indices:
+                    point = obj.data.vertices[obj.data.loops[index].vertex_index].co
+                    uv.data[index].uv = (point[axes[0]], point[axes[1]])
     materials = {mat for obj in collection.objects if obj.type == "MESH" for mat in obj.data.materials}
     for mat in materials:
         if mat.name in FURNITURE_MATERIALS:
@@ -76,11 +92,7 @@ def append_furniture(path):
             mat.name = "Nara furniture piping"
         else:
             raise RuntimeError(f"Unexpected material in team furniture: {mat.name}")
-    fabric = next(mat for mat in materials if mat.name == "Nara furniture upholstery")
-    image = next(node.image for node in fabric.node_tree.nodes if node.type == "TEX_IMAGE" and node.image)
-    if not image.packed_file:
-        raise RuntimeError("The team chair texture must be packed in the source Blender file.")
-    return collection, image.packed_file.data
+    return collection
 
 
 def duplicate_furniture(root, collection, label):
@@ -102,88 +114,140 @@ def mesh_bounds(items):
     return tuple(Vector([op(p[i] for p in points) for i in range(3)]) for op in (min, max))
 
 
-def place_furniture(collection, name, chair_source, position, forward):
-    chair = duplicate_furniture(collection.objects[chair_source], collection, name + " furniture")
-    table = duplicate_furniture(collection.objects["Table"], collection, name + " desk")
-    yaw = math.atan2(-forward.x, forward.y)
-    chair.location, chair.rotation_euler.z = position, math.pi + yaw
-    table.location, table.rotation_euler.z = position + forward * DESK_OFFSET, yaw
-    chair["source"] = "Team 9 photo-reference Blender furniture"
-    table["source"] = chair["source"]
-    return table, chair
+def place_team_desk(source, collection, label, x, y):
+    desk = duplicate_furniture(source, collection, "Classroom desk " + label)
+    desk.location = (x, y, 0)
+    desk.scale = DESK_SCALE
+    return desk
+
+
+def check_desk_fit(desks, rows, columns, offset, chair_back):
+    bpy.context.view_layer.update()
+    low, high = mesh_bounds(desks[0].children_recursive)
+    width, depth = high.x - low.x, high.y - low.y
+    if not .91 < width < .94 or not .50 < depth < .54 or not .75 < high.z < .77:
+        raise RuntimeError(f"Unexpected team desk size: {width:.3f} x {depth:.3f} x {high.z:.3f} m.")
+    aisle = min(x for x in columns if x > 0) - max(x for x in columns if x < 0) - width
+    pitch = min(abs(a-b) for a, b in zip(columns, columns[1:]))
+    gap = min(abs(a-b) for a, b in zip(rows, rows[1:])) - offset - depth/2 - chair_back
+    if aisle < 1.10 or pitch - width < .025 or gap < .065:
+        raise RuntimeError(f"Insufficient desk spacing: aisle {aisle:.3f} m, row clearance {gap:.3f} m.")
+    print(f"NARA_TEAM_DESKS source=Meja-Kursi.blend count={len(desks)} "
+          f"size={width:.3f}x{depth:.3f}x{high.z:.3f} m aisle={aisle:.3f} m row_gap={gap:.3f} m",
+          flush=True)
 
 
 def fit_furniture(room, furniture, upholstery):
     for name in ("chairs", "desks", "teacher_desk", "bags_bin"):
         bpy.data.objects.remove(room.objects[name], do_unlink=True)
 
-    collection, texture = append_furniture(furniture)
-    panel = []
-    for marker, source_name, coordinates in SEATS:
-        anchor = Vector(coordinates)
-        forward = Vector((PRESENTER[0] - anchor.x, PRESENTER[1] - anchor.y, 0)).normalized()
-        panel.append((marker, *place_furniture(collection, marker, source_name, anchor, forward)))
-
-    for row, (y, columns) in enumerate(REAR_ROWS, 1):
-        for index, x in enumerate(columns, 1):
-            place_furniture(collection, f"Rear row {row} seat {index}", "Near chair",
-                            Vector((x, y, 0)), Vector((0, 1, 0)))
-    for name in ("Table", "Near chair", "Far chair"):
-        source = collection.objects[name]
+    collection = append_furniture(furniture, "Near chair", "Table")
+    source_chair = collection.objects["Near chair"]
+    source_table = collection.objects["Table"]
+    fabric = bpy.data.materials["Nara furniture upholstery"]
+    image = next(node.image for node in fabric.node_tree.nodes if node.type == "TEX_IMAGE" and node.image)
+    if not image.packed_file:
+        raise RuntimeError("The team chair texture must be packed in the source Blender file.")
+    markers = dict(MARKERS)
+    bpy.context.view_layer.update()
+    cushion = next(obj for obj in source_chair.children_recursive if "padded seat" in obj.name)
+    _, seat_top = mesh_bounds([cushion])
+    if not .46 < seat_top.z < .48:
+        raise RuntimeError("The team chair cushion does not match the seated avatar height.")
+    desks = []
+    for row, y in enumerate(ROWS, 1):
+        for column, x in enumerate(COLUMNS, 1):
+            label = f"R{row:02d}_C{column:02d}"
+            chair = duplicate_furniture(source_chair, collection, "Classroom chair " + label)
+            chair.location, chair.rotation_euler.z = (x, y, 0), math.pi
+            desks.append(place_team_desk(source_table, collection, label, x, y + DESK_OFFSET))
+            markers["NaraAudienceSeat_" + label] = (x, y, seat_top.z - .481)
+    for source in (source_chair, source_table):
         for item in list(source.children_recursive) + [source]:
             bpy.data.objects.remove(item, do_unlink=True)
 
-    bpy.context.view_layer.update()
-    markers = dict(MARKERS)
-    tabletop_bounds = []
-    for name, table, chair in panel:
-        cushion = next(obj for obj in chair.children_recursive if "padded seat" in obj.name)
-        back = next(obj for obj in chair.children_recursive if "upholstered back both faces" in obj.name)
-        _, top = mesh_bounds([cushion])
-        low, high = mesh_bounds(table.children_recursive)
-        back_min, back_max = mesh_bounds([back])
-        if ((back_min + back_max) / 2 - chair.location).dot(table.location - chair.location) >= 0:
-            raise RuntimeError(f"Chair back faces the desk at {name}.")
-        tabletop_bounds.append((low.x, high.x))
-        if not .46 < top.z < .48 or not .75 < high.z < .77 or abs(low.z) > .005:
-            raise RuntimeError(f"Unexpected furniture scale at {name}.")
-        # Calibrate the avatar socket to the chair cushion rather than the model origin.
-        markers[name] = (chair.location.x, chair.location.y, top.z - .481)
-        print(f"NARA_PANEL {name} seat={top.z:.3f} m table={high.z:.3f} m")
-    if any(a[1] >= b[0] for a, b in zip(tabletop_bounds, tabletop_bounds[1:])):
-        raise RuntimeError(f"Panel desk bounds overlap: {tabletop_bounds}.")
-    print(f"NARA_TEAM_FURNITURE panel={len(panel)} rear={sum(len(columns) for _, columns in REAR_ROWS)}")
+    check_desk_fit(desks, ROWS, COLUMNS, DESK_OFFSET, .31)
     upholstery.parent.mkdir(parents=True, exist_ok=True)
-    upholstery.write_bytes(texture)
+    upholstery.write_bytes(image.packed_file.data)
     return markers
 
 
-def add_lectern_body():
+def lectern_oak(texture_path):
+    grid = np.linspace(0, 1, 512, endpoint=False, dtype=np.float32)
+    u, v = np.meshgrid(grid, grid)
+    grain = (5 * np.sin(math.tau * (19*u + .23*np.sin(math.tau*v))) +
+             3 * np.cos(math.tau * (44*u + .8*v)) +
+             2 * np.sin(math.tau * (116*u + 1.7*v)))
+    rng = np.random.default_rng(17)
+    grain += .8 * rng.normal(0, 1, grain.shape)
+    pixels = np.empty((512, 512, 4), dtype=np.float32)
+    pixels[:, :, :3] = (np.array((171, 121, 77)) + grain[..., None]) / 255
+    pixels[:, :, 3] = 1
+    image = bpy.data.images.new("LecternOak.png", width=512, height=512)
+    image.pixels.foreach_set(pixels.ravel())
+    image.filepath_raw = str(texture_path)
+    image.file_format = "PNG"
+    image.save()
+    image.pack()
+    material = color("NARA lectern oak", (.41, .25, .12, 1), .46)
+    nodes = material.node_tree.nodes
+    texture = nodes.new("ShaderNodeTexImage")
+    texture.image = image
+    material.node_tree.links.new(texture.outputs["Color"], nodes.get("Principled BSDF").inputs["Base Color"])
+    return material
+
+
+def fit_lectern(texture_path):
     x, y, floor = MARKERS["NaraLectern"]
-    body = color("NARA matte navy body", (.055, .093, .124, 1), .38)
-    reading = color("NARA reading surface", (.064, .082, .085, 1), .50)
-    detail = color("NARA teal front detail", (.064, .228, .208, 1), .44)
+    oak = lectern_oak(texture_path)
+    body = color("NARA lectern graphite", (.043, .055, .057, 1), .44)
+    deck = color("NARA reading surface", (.045, .064, .064, 1), .58)
+    hardware = color("NARA lectern hardware", (.038, .041, .046, 1), .32)
+    angle = -math.atan2(MONITOR_NORMAL.y, MONITOR_NORMAL.z)
     parts = (
-        ("Lectern floor base", (x, y, floor + .028), (.62, .48, .056), body, .014),
-        ("Lectern column", (x, y + .042, floor + .545), (.177, .201, 1.03), body, .016),
-        ("Lectern front panel", (x, y - .085, floor + .59), (.411, .072, .86), body, .023),
-        ("Lectern front inlay", (x, y - .125, floor + .59), (.036, .009, .683), detail, .004),
-        ("Presenter lectern", (x, y, floor + 1.069), (.66, .52, .062), reading, .018),
+        ("Lectern plinth", (x, y, floor+.025), (.708, .491, .05), body, .014),
+        ("Lectern support", (x, y-.042, floor+.552), (.406, .300, .97), body, .022),
+        ("Lectern oak audience panel", (x, y-.207, floor+.566), (.592, .042, .865), oak, .014),
+        ("Lectern oak left return", (x-.292, y-.043, floor+.585), (.055, .337, .885), oak, .014),
+        ("Lectern oak right return", (x+.292, y-.043, floor+.585), (.055, .337, .885), oak, .014),
+        ("Lectern service cover", (x, y+.116, floor+.625), (.302, .016, .620), body, .007),
+        ("Lectern rear shelf", (x, y+.125, floor+.884), (.405, .177, .032), body, .010),
     )
     for name, point, size, material, bevel in parts:
-        item = box(name, point, size, material)
-        edges = item.modifiers.new("Rounded edges", "BEVEL")
-        edges.width, edges.segments = bevel, 3
-        item.modifiers.new("Face-weighted normals", "WEIGHTED_NORMAL")
-        item["source"] = "NARA Blender lectern"
-
-
-def fit_lectern():
-    add_lectern_body()
+        rounded_box(name, point, size, material, bevel)
+    for label, point, size, material, bevel in (
+        ("Presenter lectern", (x, y, floor+1.066), (.790, .525, .058), oak, .018),
+        ("Inclined writing surface", (x, y+.005, floor+1.095), (.725, .470, .015), deck, .007),
+        ("Oak paper rest", (x, y+.222, floor+1.063), (.655, .025, .027), oak, .007),
+    ):
+        item = rounded_box(label, point, size, material, bevel)
+        item.rotation_euler.x = angle
     trim = color("Nara confidence bezel", (.047, .058, .063, 1), .43)
-    bezel = box("Lectern confidence monitor", Vector(MONITOR_CENTER) - MONITOR_NORMAL * .013,
-                (MONITOR_WIDTH + .027, MONITOR_HEIGHT + .027, .022), trim)
-    bezel.rotation_euler.x = -math.atan2(MONITOR_NORMAL.y, MONITOR_NORMAL.z)
+    bezel = rounded_box("Lectern confidence monitor", Vector(MONITOR_CENTER) - MONITOR_NORMAL*.019,
+                        (MONITOR_WIDTH+.030, MONITOR_HEIGHT+.030, .031), trim, .008)
+    bezel.rotation_euler.x = angle
+    stem_x, stem_y = x + .293, y - .152
+    rounded_box("Lectern microphone mount", (stem_x, stem_y, 1.143), (.054, .058, .027), hardware, .008)
+    cable = bpy.data.curves.new("Lectern microphone stem", "CURVE")
+    cable.dimensions, cable.bevel_depth, cable.bevel_resolution = "3D", .007, 1
+    spline = cable.splines.new("BEZIER")
+    spline.bezier_points.add(2)
+    for point, coordinate in zip(spline.bezier_points, (
+        (stem_x, stem_y, 1.153), (stem_x, stem_y+.022, 1.297), (stem_x-.047, stem_y+.086, 1.359),
+    )):
+        point.co = coordinate
+        point.handle_left_type = point.handle_right_type = "AUTO"
+    cable.resolution_u = 6
+    cable.materials.append(hardware)
+    stem = bpy.data.objects.new("Lectern microphone stem", cable)
+    bpy.context.collection.objects.link(stem)
+    bpy.ops.object.select_all(action="DESELECT")
+    bpy.context.view_layer.objects.active = stem
+    stem.select_set(True)
+    bpy.ops.object.convert(target="MESH")
+    capsule = rounded_box("Lectern microphone capsule", (stem_x-.058, stem_y+.108, 1.366),
+                          (.027, .067, .027), hardware, .012)
+    capsule.rotation_euler.z = .48
 
 
 def color(name, rgba, roughness=.55):
@@ -204,6 +268,44 @@ def box(name, point, dimensions, material):
     item.data.materials.append(material)
     bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
     return item
+
+
+def rounded_box(name, point, dimensions, material, bevel):
+    item = box(name, point, dimensions, material)
+    if bevel:
+        edges = item.modifiers.new("Rounded edges", "BEVEL")
+        edges.width, edges.segments = bevel, 2
+        item.modifiers.new("Face-weighted normals", "WEIGHTED_NORMAL")
+    return item
+
+
+def check_sightlines(scene, markers):
+    graph = bpy.context.evaluated_depsgraph_get()
+    def blocker(origin, endpoint):
+        ray = Vector(endpoint) - Vector(origin)
+        hit, _, _, _, obj, _ = scene.ray_cast(graph, origin, ray.normalized(), distance=ray.length - .024)
+        return obj.name if hit else None
+
+    count = 0
+    screen = Vector(MARKERS["NaraScreen"])
+    for name, point in markers.items():
+        if not name.startswith("NaraAudienceSeat_"):
+            continue
+        for height in (1.14, 1.24):
+            eye = Vector(point) + Vector((0, 0, height))
+            for x, z in ((0, 0), (-1, -1), (0, -1), (1, -1), (-1, 1), (1, 1)):
+                target = screen + Vector((x * .47 * SCREEN_WIDTH, 0, z * .47 * SCREEN_HEIGHT))
+                blocked = blocker(eye, target)
+                if blocked:
+                    raise RuntimeError(f"Screen obscured by {blocked} from {name} at eye height {height} m.")
+                count += 1
+        blocked = blocker(Vector(PRESENTER), Vector(point) + Vector((0, 0, 1.19)))
+        if blocked:
+            raise RuntimeError(f"Presenter's view of {name} is blocked by {blocked}.")
+    blocked = blocker(Vector(PRESENTER), Vector(MONITOR_CENTER))
+    if blocked:
+        raise RuntimeError(f"Presenter's monitor is blocked by {blocked}.")
+    print(f"NARA_CLASSROOM_SIGHTLINES passed={count} room_to_presenter=24 monitor=clear")
 
 
 def preview_slide(path, name, center, right, up, width, height):
@@ -251,13 +353,13 @@ def configure_preview(scene):
     camera = bpy.data.objects.new("Sudut pembicara", camera_data)
     bpy.context.collection.objects.link(camera)
     camera.location = PRESENTER
-    camera_data.lens = 22.5
+    camera_data.lens = 20
     aim(camera, MARKERS["NaraSightline"])
     scene.camera = camera
     overview_data = bpy.data.cameras.new("Sudut ruangan")
     overview = bpy.data.objects.new("Sudut ruangan", overview_data)
     bpy.context.collection.objects.link(overview)
-    overview.location = (3.11, -3.18, 2.03)
+    overview.location = (3.43, -3.73, 2.28)
     overview_data.lens = 20
     aim(overview, (.26, 1.78, 1.21))
     light("Window daylight", (-3.72, -.35, 1.77), (.25, -.1, .8), 690, 5.0, (.82, .91, 1), 1.42)
@@ -290,19 +392,13 @@ def main(options):
         if obj.type == "MESH":
             obj["source"] = "tevy Classroom v2, CC0 1.0"
     markers = fit_furniture(scene, options.furniture, options.upholstery.resolve())
-    fit_lectern()
+    options.fbx.parent.mkdir(parents=True, exist_ok=True)
+    fit_lectern(options.fbx.resolve().parent / "LecternOak.png")
     frame = color("Nara screen frame", (.072, .093, .102, 1))
     projector = color("Nara projector body", (.76, .78, .76, 1))
-    lens = color("Nara projector lens", (.054, .11, .13, 1), .18)
     x, y, z = MARKERS["NaraScreen"]
     box("Pull-down projection screen", (x, y+.032, z), (SCREEN_WIDTH+.10, .055, SCREEN_HEIGHT+.09), frame)
     box("Projection screen cassette", (x, y+.029, z+SCREEN_HEIGHT/2+.059), (SCREEN_WIDTH+.20, .116, .082), projector)
-    box("Ceiling projector", (x, 1.10, 2.57), (.398, .277, .102), projector)
-    box("Projector ceiling mount", (x, 1.10, 2.72), (.098, .124, .20), frame)
-    bpy.ops.mesh.primitive_cylinder_add(vertices=16, radius=.034, depth=.035,
-        location=(x-.096, 1.248, 2.565), rotation=(1.5707963, 0, 0))
-    bpy.context.object.name = "Projector lens"
-    bpy.context.object.data.materials.append(lens)
     for name, point in markers.items():
         item = bpy.data.objects.new(name, None)
         item.empty_display_type = "PLAIN_AXES"
@@ -310,8 +406,8 @@ def main(options):
         item.location = point
         bpy.context.collection.objects.link(item)
     bpy.context.view_layer.update()
+    check_sightlines(scene, markers)
     mesh_faces = sum(len(item.data.polygons) for item in scene.objects if item.type == "MESH")
-    options.fbx.parent.mkdir(parents=True, exist_ok=True)
     bpy.ops.object.select_all(action="SELECT")
     bpy.ops.export_scene.fbx(filepath=str(options.fbx.resolve()), use_selection=True,
         object_types={"MESH", "EMPTY"}, bake_anim=False, axis_forward="-Z", axis_up="Y",
@@ -325,9 +421,15 @@ def main(options):
     configure_preview(scene)
     options.blend.parent.mkdir(parents=True, exist_ok=True)
     scene.render.filepath = "//Tata-Ruang.png" if options.skip_render else str(options.preview.resolve())
-    bpy.ops.file.pack_all()
+    for image in bpy.data.images:
+        if image.source == "FILE":
+            if not image.packed_files:
+                image.pack()
+            image.filepath = "//" + Path(image.filepath.replace("\\", "/")).name
+            for packed in image.packed_files:
+                packed.filepath = image.filepath
     bpy.context.preferences.filepaths.save_version = 0
-    bpy.ops.wm.save_as_mainfile(filepath=str(options.blend.resolve()))
+    bpy.ops.wm.save_as_mainfile(filepath=str(options.blend.resolve()), compress=True, relative_remap=False)
     if not options.skip_render:
         bpy.ops.render.render(write_still=True)
 

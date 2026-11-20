@@ -12,9 +12,11 @@ namespace Nara.Practice
         readonly List<XRInputSubsystem> inputs = new();
         NaraPractice app;
         PracticeView view;
-        bool lastA, lastB, lastX, lastY, lastRightGrip, lastLeftGrip, lastSkip;
+        bool lastA, lastB, lastY, lastRightGrip, lastLeftGrip, lastSkip;
+        bool classroomGripReady;
         float yaw, pitch, holdToEnd, framingYaw, framingVelocity;
         public bool Active { get; private set; }
+        internal bool ViewingProjection { get; private set; }
 
         public void Initialise(NaraPractice practice)
         {
@@ -36,6 +38,7 @@ namespace Nara.Practice
                 Active = playingXr;
                 if (Active)
                 {
+                    ViewingProjection = false;
                     SubsystemManager.GetSubsystems(inputs);
                     foreach (XRInputSubsystem input in inputs)
                     {
@@ -55,6 +58,8 @@ namespace Nara.Practice
         void ReadDesktop()
         {
             PracticePhase phase = app.Session.Phase;
+            if (phase is not (PracticePhase.Setup or PracticePhase.Presentation))
+                ViewingProjection = false;
             if (Input.GetKeyDown(KeyCode.Tab))
             {
                 view.MoveFocus(Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift));
@@ -62,7 +67,10 @@ namespace Nara.Practice
             }
             if (Input.GetKeyDown(KeyCode.Escape) && phase != PracticePhase.Setup && !view.Editing)
             {
-                app.ResetPractice();
+                if (ViewingProjection)
+                    ToggleProjection();
+                else
+                    app.ResetPractice();
                 return;
             }
             if (Input.GetKeyUp(KeyCode.Space))
@@ -71,35 +79,32 @@ namespace Nara.Practice
                 ScreenCapture.CaptureScreenshot(System.IO.Path.Combine(Application.persistentDataPath, "Nara-view.png"));
             if (view.Editing)
                 return;
-            if (phase == PracticePhase.Setup && (Input.GetKeyDown(KeyCode.C) ||
-                (view.PickingAvatars && Input.GetKeyDown(KeyCode.Escape))))
-                view.ToggleAvatarPicker();
-            else if (phase == PracticePhase.Setup && Input.GetKeyDown(KeyCode.Escape))
-                view.CloseDesktopSection();
-            bool picking = view.PickingAvatars;
-            if (!picking && phase == PracticePhase.Setup && Input.GetKeyDown(KeyCode.B))
+            if (phase == PracticePhase.Setup && Input.GetKeyDown(KeyCode.Escape))
+            {
+                if (ViewingProjection)
+                    ToggleProjection();
+                else
+                    view.CloseDesktopSection();
+            }
+            if (app.IsIf101 && Input.GetKeyDown(KeyCode.V))
+                ToggleProjection();
+            if (phase == PracticePhase.Setup && Input.GetKeyDown(KeyCode.B))
                 view.SelectBaseline();
             GameObject selected = EventSystem.current ? EventSystem.current.currentSelectedGameObject : null;
             Selectable control = selected ? selected.GetComponent<Selectable>() : null;
-            if (!picking && (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter)) &&
+            if ((Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter)) &&
                 (!control || !control.IsActive() || !control.IsInteractable()))
                 PrimaryAction();
             if (Input.GetKeyDown(KeyCode.P))
                 app.TogglePause();
-            if (Input.GetKeyDown(KeyCode.RightArrow))
-            {
-                if (picking) view.StepAvatar(1);
-                else app.ChangeSlide(1);
-            }
-            if (Input.GetKeyDown(KeyCode.LeftArrow))
-            {
-                if (picking) view.StepAvatar(-1);
-                else app.ChangeSlide(-1);
-            }
+            if (Input.GetKeyDown(KeyCode.RightArrow) && !view.TurnQuestionPage(1))
+                app.ChangeSlide(1);
+            if (Input.GetKeyDown(KeyCode.LeftArrow) && !view.TurnQuestionPage(-1))
+                app.ChangeSlide(-1);
             if (Input.GetKeyDown(KeyCode.Space))
                 app.BeginTalk();
 
-            if (!app.Baseline && Input.GetMouseButton(1) &&
+            if (!app.Baseline && !ViewingProjection && Input.GetMouseButton(1) &&
                 (EventSystem.current == null || !EventSystem.current.IsPointerOverGameObject()))
             {
                 yaw = Mathf.Repeat(yaw + Input.GetAxisRaw("Mouse X") * 1.6f + 180, 360) - 180;
@@ -109,11 +114,35 @@ namespace Nara.Practice
                 yaw = pitch = 0;
             framingYaw = Mathf.SmoothDamp(framingYaw, phase == PracticePhase.Setup ? -11f : 0f,
                 ref framingVelocity, .18f, Mathf.Infinity, Time.unscaledDeltaTime);
+            ApplyDesktopView();
+        }
+
+        internal void ToggleProjection()
+        {
+            if (Active || !app.IsIf101 || app.Baseline || !app.Slide ||
+                app.Session.Phase is not (PracticePhase.Setup or PracticePhase.Presentation))
+                return;
+            ViewingProjection = !ViewingProjection;
+            ApplyDesktopView();
+        }
+
+        void ApplyDesktopView()
+        {
             Transform eyes = app.practiceCamera.transform;
             eyes.localPosition = Vector3.zero;
-            if (!app.Baseline && phase is not (PracticePhase.Setup or PracticePhase.Review) &&
+            PracticePhase phase = app.Session.Phase;
+            if (!app.Baseline && ViewingProjection)
+            {
+                Transform screen = app.slideScreen.transform;
+                eyes.position = screen.position - screen.forward * 2.78f - Vector3.up * .33f;
+                eyes.rotation = Quaternion.LookRotation(screen.position - eyes.position);
+            }
+            else if (!app.Baseline && phase is not (PracticePhase.Setup or PracticePhase.Review) &&
                 app.confidenceScreen && Input.GetKey(KeyCode.V))
-                eyes.rotation = Quaternion.LookRotation(app.confidenceScreen.transform.position - eyes.position);
+            {
+                Transform display = app.confidenceScreen.transform;
+                eyes.rotation = Quaternion.LookRotation(display.position - eyes.position);
+            }
             else
                 eyes.localRotation = Quaternion.Euler(app.desktopPitch + pitch, yaw + framingYaw, 0);
         }
@@ -131,57 +160,47 @@ namespace Nara.Practice
             bool skip = Read(left, CommonUsages.triggerButton);
 
             bool setup = app.Session.Phase == PracticePhase.Setup;
-            if (setup && leftGrip && !lastLeftGrip)
-                view.ToggleAvatarPicker();
-            bool picking = view.PickingAvatars;
             if (a && !lastA)
-            {
-                if (picking) view.NextAvatarSeat();
-                else PrimaryAction();
-            }
+                PrimaryAction();
             if (b && !lastB)
             {
-                if (picking)
-                    view.StepAvatar(1);
-                else if (setup)
+                if (setup)
                     view.ToggleCloud();
-                else
+                else if (!view.TurnQuestionPage(1))
                     app.ChangeSlide(1);
             }
             if (y && !lastY)
             {
-                if (picking)
-                    view.StepAvatar(-1);
-                else if (setup)
+                if (setup)
                     view.ToggleLanguage();
-                else
+                else if (!view.TurnQuestionPage(-1))
                     app.ChangeSlide(-1);
             }
-            if (!setup && leftGrip && !lastLeftGrip)
+            if (!leftGrip)
+                classroomGripReady = true;
+            if (leftGrip && !lastLeftGrip)
             {
-                if (app.Session.Phase == PracticePhase.Presentation)
+                if (setup)
+                {
+                    if (classroomGripReady)
+                        view.ToggleClassroom();
+                }
+                else if (app.Session.Phase == PracticePhase.Presentation)
                     app.TogglePause();
                 else
                     app.Replay();
             }
             if (rightGrip && !lastRightGrip)
-            {
-                if (picking)
-                    view.PreviewSelectedAvatar();
-                else
-                    app.BeginTalk();
-            }
+                app.BeginTalk();
             if (!rightGrip && lastRightGrip)
                 app.EndTalk();
-            if (!picking && skip && !lastSkip)
+            if (skip && !lastSkip)
             {
                 if (app.Session.Phase == PracticePhase.Setup)
                     view.ToggleMetrics();
                 else
                     app.Answer("", true);
             }
-            if (picking && x && !lastX)
-                view.CycleAvatarGender();
             if (x && !setup)
             {
                 holdToEnd += Time.unscaledDeltaTime;
@@ -194,7 +213,6 @@ namespace Nara.Practice
             }
             lastA = a;
             lastB = b;
-            lastX = x;
             lastY = y;
             lastRightGrip = rightGrip;
             lastLeftGrip = leftGrip;
@@ -225,6 +243,7 @@ namespace Nara.Practice
                 app.practiceCamera.transform.localPosition = position;
             if (head.TryGetFeatureValue(CommonUsages.deviceRotation, out Quaternion rotation))
                 app.practiceCamera.transform.localRotation = rotation;
+            view.Refresh();
         }
 
         static bool Read(InputDevice device, InputFeatureUsage<bool> feature) =>

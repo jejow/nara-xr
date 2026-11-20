@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
 using UnityEngine;
 
 namespace Nara.Practice
@@ -12,6 +13,21 @@ namespace Nara.Practice
         public string summary;
         public string language;
         public string[] slides;
+    }
+
+    [Serializable]
+    public sealed class DeckPage
+    {
+        public int page;
+        public string text;
+    }
+
+    [Serializable]
+    sealed class ImportedDeck
+    {
+        public int version;
+        public string topic;
+        public DeckPage[] pages;
     }
 
     [Serializable]
@@ -50,13 +66,30 @@ namespace Nara.Practice
 
     public sealed class PracticeDeck : IDisposable
     {
+        internal const long MaxArchiveBytes = 32_000_000;
+        const int MaxPages = 60;
+        const int MaxJpegBytes = 1_500_000;
         readonly List<Texture2D> imported = new(3);
-        public readonly List<Texture2D> Slides = new(3);
-        public string Folder => Path.Combine(Application.persistentDataPath, "Practice");
+        readonly List<Texture2D> slides = new(3);
+        ImportedDeck archive;
+        Texture2D pageImage;
+        int cachedPage = -1;
+        string smokeFolder;
+        public string Folder => smokeFolder ?? Path.Combine(Application.persistentDataPath, "Practice");
+        string ArchivePath => Path.Combine(Folder, "imported-deck.zip");
+        public int Count => archive?.pages.Length ?? slides.Count;
+        public DeckPage[] Pages => archive?.pages ?? Array.Empty<DeckPage>();
+        public bool HasImportedFile => archive != null;
         public string Topic { get; private set; }
         public string Summary { get; private set; }
         public string Language { get; private set; }
         public string Status { get; private set; }
+
+        internal void UseSmokeFolder(string path)
+        {
+            if (Application.isBatchMode)
+                smokeFolder = path;
+        }
 
         public void Reload()
         {
@@ -68,6 +101,19 @@ namespace Nara.Practice
             try
             {
                 Directory.CreateDirectory(Folder);
+                if (File.Exists(ArchivePath))
+                {
+                    archive = ReadArchive(ArchivePath);
+                    if (!string.IsNullOrWhiteSpace(archive.topic))
+                        Topic = archive.topic.Trim();
+                    else
+                        Topic = "";
+                    Summary = "";
+                    int withText = Array.FindAll(archive.pages, page => !string.IsNullOrWhiteSpace(page.text)).Length;
+                    Status = withText == 0 ? $"{Count} slide · tambahkan ringkasan atau penjelasan" :
+                        $"{Count} slide · teks terbaca pada {withText} slide";
+                    return;
+                }
                 string path = Path.Combine(Folder, "practice.json");
                 if (!File.Exists(path))
                 {
@@ -89,24 +135,111 @@ namespace Nara.Practice
                     Topic = string.IsNullOrWhiteSpace(manifest.topic) ? Topic : manifest.topic.Trim();
                     Summary = manifest.summary ?? "";
                     Language = manifest.language == "en" ? "en" : "id";
-                    Slides.AddRange(imported);
-                    Status = $"{Slides.Count} slide pengguna";
+                    slides.AddRange(imported);
+                    Status = $"{slides.Count} slide pengguna";
                 }
             }
-            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException || ex is ArgumentException)
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException || ex is ArgumentException ||
+                ex is InvalidDataException)
             {
                 Dispose();
-                Status = "Periksa practice.json dan gambar. Slide contoh ditampilkan.";
+                Status = "Materi tersimpan tidak terbaca. Slide contoh ditampilkan.";
             }
-            if (Slides.Count == 0)
+            if (slides.Count == 0)
             {
                 for (int i = 1; i <= 3; i++)
                 {
                     Texture2D image = Resources.Load<Texture2D>("Nara/Slides/slide_" + i);
                     if (image)
-                        Slides.Add(image);
+                        slides.Add(image);
                 }
             }
+        }
+
+        public Texture2D GetSlide(int index)
+        {
+            if (index < 0 || index >= Count)
+                return null;
+            if (archive == null)
+                return slides[index];
+            if (cachedPage == index)
+                return pageImage;
+
+            if (pageImage)
+                UnityEngine.Object.Destroy(pageImage);
+            cachedPage = index;
+            pageImage = null;
+            try
+            {
+                using var zip = ZipFile.OpenRead(ArchivePath);
+                pageImage = ReadPage(zip, index + 1);
+            }
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException || ex is ArgumentException ||
+                ex is InvalidDataException)
+            {
+                Debug.LogWarning("NARA could not display the selected page.");
+            }
+            return pageImage;
+        }
+
+        internal void InstallArchive(string incoming)
+        {
+            ReadArchive(incoming, checkPreview: true);
+            if (File.Exists(ArchivePath))
+                File.Replace(incoming, ArchivePath, null);
+            else
+                File.Move(incoming, ArchivePath);
+        }
+
+        internal void DiscardArchive() => File.Delete(ArchivePath);
+
+        static ImportedDeck ReadArchive(string path, bool checkPreview = false)
+        {
+            if (new FileInfo(path).Length > MaxArchiveBytes)
+                throw new InvalidDataException();
+            using var zip = ZipFile.OpenRead(path);
+            ZipArchiveEntry entry = zip.GetEntry("deck.json");
+            if (entry == null || entry.Length is <= 0 or > 1_000_000)
+                throw new InvalidDataException();
+            using var reader = new StreamReader(entry.Open());
+            var manifest = JsonUtility.FromJson<ImportedDeck>(reader.ReadToEnd());
+            if (manifest?.version != 1 || manifest.pages == null || manifest.pages.Length is < 1 or > MaxPages)
+                throw new InvalidDataException();
+            if (manifest.topic?.Length > 100 || zip.Entries.Count != manifest.pages.Length + 1)
+                throw new InvalidDataException();
+            for (int i = 0; i < manifest.pages.Length; i++)
+            {
+                DeckPage page = manifest.pages[i];
+                if (page?.page != i + 1 || page.text?.Length > 2500)
+                    throw new InvalidDataException();
+                PageEntry(zip, page.page);
+            }
+            if (checkPreview)
+                UnityEngine.Object.Destroy(ReadPage(zip, 1));
+            return manifest;
+        }
+
+        static ZipArchiveEntry PageEntry(ZipArchive zip, int page)
+        {
+            ZipArchiveEntry entry = zip.GetEntry($"slide-{page:000}.jpg");
+            if (entry == null || entry.Length is <= 0 or > MaxJpegBytes)
+                throw new InvalidDataException();
+            return entry;
+        }
+
+        static Texture2D ReadPage(ZipArchive zip, int page)
+        {
+            using var stream = PageEntry(zip, page).Open();
+            using var buffer = new MemoryStream();
+            stream.CopyTo(buffer);
+            var texture = new Texture2D(2, 2, TextureFormat.RGB24, false);
+            if (!texture.LoadImage(buffer.ToArray(), true) || Mathf.Max(texture.width, texture.height) > 1600)
+            {
+                UnityEngine.Object.Destroy(texture);
+                throw new InvalidDataException();
+            }
+            texture.wrapMode = TextureWrapMode.Clamp;
+            return texture;
         }
 
         void LoadImage(string file)
@@ -128,10 +261,15 @@ namespace Nara.Practice
 
         public void Dispose()
         {
+            if (pageImage)
+                UnityEngine.Object.Destroy(pageImage);
+            archive = null;
+            pageImage = null;
+            cachedPage = -1;
             foreach (Texture2D texture in imported)
                 UnityEngine.Object.Destroy(texture);
             imported.Clear();
-            Slides.Clear();
+            slides.Clear();
         }
     }
 }

@@ -9,6 +9,9 @@
 /NARA/*.csproj
 /NARA/*.sln
 /NARA/*.slnx
+# Privately baked HY-Motion data for the local build
+/NARA/Assets/FinalProject/Resources/Nara/LocalAudienceRaises.bytes
+/NARA/Assets/FinalProject/Resources/Nara/LocalAudienceRaises.bytes.meta
 
 # Local configuration and working files
 .env

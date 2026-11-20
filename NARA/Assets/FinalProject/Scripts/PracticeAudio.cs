@@ -6,11 +6,11 @@ namespace Nara.Practice
 {
     public sealed class PracticeMicrophone : IDisposable
     {
-        const int SampleRate = 16000;
+        internal const int SampleRate = 16000;
         AudioClip input;
         string device;
         float beganAt;
-        int limit;
+        int limit, readPosition;
 
         public bool Recording => input != null;
 #if UNITY_ANDROID && !UNITY_EDITOR
@@ -31,8 +31,22 @@ namespace Nara.Practice
             device = devices[0];
             limit = Mathf.Clamp(seconds, 1, PracticeSession.Duration);
             input = Microphone.Start(device, false, limit, SampleRate);
+            readPosition = 0;
             beganAt = Time.realtimeSinceStartup;
             return Recording;
+        }
+
+        public byte[] ReadChunk(int seconds)
+        {
+            if (!Recording)
+                return null;
+            int count = input.frequency * seconds;
+            if (Microphone.GetPosition(device) - readPosition < count)
+                return null;
+            byte[] pcm = ReadPcm(input, readPosition, count);
+            if (pcm != null)
+                readPosition += count;
+            return pcm;
         }
 
         public byte[] Finish()
@@ -47,30 +61,35 @@ namespace Nara.Practice
             input = null;
             try
             {
-                if (frames < clip.frequency / 5)
+                int count = Mathf.Min(frames, clip.samples) - readPosition;
+                if (count < clip.frequency / 5)
                     return null;
-                frames = Mathf.Min(frames, clip.samples);
-                float[] raw = new float[frames * clip.channels];
-                if (!clip.GetData(raw, 0))
-                    return null;
-                int count = Mathf.FloorToInt(frames * (SampleRate / (float)clip.frequency));
-                byte[] pcm = new byte[count * 2];
-                for (int i = 0; i < count; i++)
-                {
-                    int frame = Mathf.Min(frames - 1, (int)((long)i * clip.frequency / SampleRate));
-                    float total = 0;
-                    for (int channel = 0; channel < clip.channels; channel++)
-                        total += raw[frame * clip.channels + channel];
-                    short sample = (short)Mathf.RoundToInt(Mathf.Clamp(total / clip.channels, -1, 1) * 32767);
-                    pcm[2 * i] = (byte)sample;
-                    pcm[2 * i + 1] = (byte)(sample >> 8);
-                }
-                return pcm;
+                return ReadPcm(clip, readPosition, count);
             }
             finally
             {
                 UnityEngine.Object.Destroy(clip);
             }
+        }
+
+        static byte[] ReadPcm(AudioClip clip, int offset, int frames)
+        {
+            float[] raw = new float[frames * clip.channels];
+            if (!clip.GetData(raw, offset))
+                return null;
+            int count = Mathf.FloorToInt(frames * (SampleRate / (float)clip.frequency));
+            var pcm = new byte[count * 2];
+            for (int i = 0; i < count; i++)
+            {
+                int frame = Mathf.Min(frames - 1, (int)((long)i * clip.frequency / SampleRate));
+                float sum = 0;
+                for (int channel = 0; channel < clip.channels; channel++)
+                    sum += raw[frame * clip.channels + channel];
+                short sample = (short)Mathf.RoundToInt(Mathf.Clamp(sum / clip.channels, -1, 1) * 32767);
+                pcm[2 * i] = (byte)sample;
+                pcm[2 * i + 1] = (byte)(sample >> 8);
+            }
+            return pcm;
         }
 
         public void Dispose()
@@ -86,10 +105,15 @@ namespace Nara.Practice
         {
             if (pcm == null || pcm.Length == 0)
                 return null;
-            using var buffer = new MemoryStream(pcm.Length + 44);
+            return EncodeWav(new ArraySegment<byte>(pcm));
+        }
+
+        internal static byte[] EncodeWav(ArraySegment<byte> pcm)
+        {
+            using var buffer = new MemoryStream(pcm.Count + 44);
             using var writer = new BinaryWriter(buffer);
             writer.Write(new[] { 'R', 'I', 'F', 'F' });
-            writer.Write(pcm.Length + 36);
+            writer.Write(pcm.Count + 36);
             writer.Write(new[] { 'W', 'A', 'V', 'E', 'f', 'm', 't', ' ' });
             writer.Write(16);
             writer.Write((short)1);
@@ -99,8 +123,8 @@ namespace Nara.Practice
             writer.Write((short)2);
             writer.Write((short)16);
             writer.Write(new[] { 'd', 'a', 't', 'a' });
-            writer.Write(pcm.Length);
-            writer.Write(pcm);
+            writer.Write(pcm.Count);
+            writer.Write(pcm.Array, pcm.Offset, pcm.Count);
             return buffer.ToArray();
         }
 
@@ -111,7 +135,13 @@ namespace Nara.Practice
             byte[] wav;
             try { wav = Convert.FromBase64String(encoded); }
             catch (FormatException) { return null; }
-            if (wav.Length < 44 || BitConverter.ToUInt32(wav, 0) != 0x46464952 || BitConverter.ToUInt32(wav, 8) != 0x45564157)
+            return DecodeWav(wav);
+        }
+
+        public static AudioClip DecodeWav(byte[] wav)
+        {
+            if (wav == null || wav.Length is < 44 or > 3_750_000 ||
+                BitConverter.ToUInt32(wav, 0) != 0x46464952 || BitConverter.ToUInt32(wav, 8) != 0x45564157)
                 return null;
 
             int channels = 0, rate = 0, format = 0, bits = 0, dataOffset = 0, dataLength = 0;
