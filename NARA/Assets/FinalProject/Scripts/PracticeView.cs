@@ -58,7 +58,7 @@ namespace Nara.Practice
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
             scaler.referenceResolution = DesktopSize;
             scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.Expand;
-            if (EventSystem.current == null)
+            if (!NaraQuestBridge.IsStandalone && EventSystem.current == null)
                 new GameObject("Desktop input", typeof(EventSystem), typeof(StandaloneInputModule));
             var root = (RectTransform)canvas.transform;
             BuildDesktop(root);
@@ -77,7 +77,7 @@ namespace Nara.Practice
             summary.text = app.Deck.Summary;
             baseline = PlayerPrefs.GetInt(ModePreference) == 1;
             english = PlayerPrefs.GetInt(LanguagePreference, app.Deck.Language == "en" ? 1 : 0) == 1;
-            cloud = app.HasEndpoint && PlayerPrefs.GetInt(VoicePreference) == 1;
+            cloud = app.LiveAvailable && PlayerPrefs.GetInt(VoicePreference) == 1;
             metrics = PlayerPrefs.GetInt(MetricsPreference) == 1;
             answer.text = "";
         }
@@ -127,8 +127,10 @@ namespace Nara.Practice
 
         public void ToggleCloud()
         {
-            if (app.HasEndpoint)
+            if (app.LiveAvailable)
                 SavePreference(VoicePreference, cloud = !cloud);
+            else if (NaraQuestBridge.IsStandalone)
+                app.Notify("Buka Pengaturan Quest untuk memasukkan kunci AISUBS.");
         }
 
         public void SetBaseline(bool useLaptop)

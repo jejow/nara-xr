@@ -27,20 +27,39 @@ Aktifkan **Suara live** di **Pengaturan**. Saat presentasi, pilih **Mulai mic** 
 
 Relay memakai `gpt-6.1-sol` dari AISUBS untuk menyusun dialog. Topik, ringkasan, teks slide, halaman yang dibuka, penjelasan, dan jawaban dipakai sebagai konteks. Tesseract membantu membaca halaman gambar. Tambahkan penjelasan untuk grafik atau gambar yang teksnya sulit dibaca. [Dokumentasi AISUBS](https://aisubs.id/apisubs/docs) · [Relay](../tools/nara_voice_server.py)
 
-Faster Whisper mulai mentranskripsi penjelasan secara lokal selama presentasi. Saat pertanyaan siap, klik **Persilakan bertanya** untuk langsung membaca dan menjawab. Supertonic menyiapkan suara karakter di latar belakang. Setelah audio siap, kamu juga bisa memutar ulang pertanyaan. Jika relay atau provider gagal memberi dialog valid, NARA beralih ke pertanyaan tersimpan.
+Faster Whisper mulai mentranskripsi penjelasan secara lokal selama presentasi. Saat pertanyaan siap, klik **Persilakan bertanya** untuk membaca dan menjawab. Unity memutar potongan audio dari posisi NPC begitu buffer cukup. Halaman subtitle mengikuti posisi pemutaran, dan mulut NPC mengikuti suara yang diputar. Audio yang sudah lengkap bisa diputar ulang. Jika relay atau provider gagal memberi dialog valid, NARA beralih ke pertanyaan tersimpan.
+
+Piper menyiapkan suara cepat di CPU. Model Indonesia menyediakan satu suara dasar dengan tempo tiap karakter. Bahasa Inggris memakai Amy dan Ryan. Supertonic memakai profil suara asli dan menjadi cadangan jika model Piper tidak tersedia. Untuk memilih profil Supertonic, kosongkan nilai `piperDir` di `runtime.json` sebelum menjalankan relay. [Piper](https://github.com/OHF-Voice/piper1-gpl) · [Model Indonesia](https://huggingface.co/rhasspy/piper-voices/blob/main/id/id_ID/news_tts/medium/MODEL_CARD)
+
+Jika ada kredensial Cartesia, relay memakai Sonic untuk streaming PCM 24 kHz dan waktu pengucapan kata. Jalankan perintah berikut dari root repo untuk menyimpannya dengan DPAPI. Relay Windows membaca pembaruan kunci pada permintaan suara berikutnya. Hanya teks yang akan diucapkan NPC yang diteruskan ke penyedia suara. [Cartesia WebSocket](https://docs.cartesia.ai/api-reference/tts/websocket)
+
+~~~powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/nara_start_live.ps1 -SetCartesiaKey
+~~~
 
 Pada komputer baru, jalankan perintah berikut di PowerShell dengan Python 3.12. Model diunduh ke folder pengguna dan dipakai kembali setiap kali relay dimulai.
 
 ```powershell
 $relayFolder = Join-Path $env:USERPROFILE '.nara\relay'
 python -m venv "$relayFolder\venv"
-& "$relayFolder\venv\Scripts\python.exe" -m pip install supertonic==1.3.1 faster-whisper==1.2.1 pypdfium2==5.15.2 Pillow==12.3.0 pywin32==312 tesserocr==2.13.0
+& "$relayFolder\venv\Scripts\python.exe" -m pip install supertonic==1.3.1 faster-whisper==1.2.1 pypdfium2==5.15.2 Pillow==12.3.0 pywin32==312 tesserocr==2.13.0 piper-tts==1.8.0 websockets==17.3
 & "$relayFolder\venv\Scripts\hf.exe" download supertone-oss-archive/supertonic-3 `
     --revision aafc6e32416a594460b32413efc49d7fe4ce6d46 `
     --include 'onnx/*' 'voice_styles/*' '*.json' --local-dir "$relayFolder\models\supertonic-3"
 & "$relayFolder\venv\Scripts\hf.exe" download Systran/faster-whisper-tiny `
     --revision d90ca5fe260221311c53c58e660288d3deb8d356 `
     --include config.json model.bin tokenizer.json vocabulary.txt --local-dir "$relayFolder\models\whisper-tiny"
+$piperFolder = Join-Path $relayFolder 'models\piper'
+New-Item -ItemType Directory -Path $piperFolder -Force | Out-Null
+$piperBase = 'https://huggingface.co/rhasspy/piper-voices/resolve/ff43c1e79f98a765202dcfb03710851f9ec4ff2e'
+$piperFiles = 'id/id_ID/news_tts/medium/id_ID-news_tts-medium',
+              'en/en_US/amy/low/en_US-amy-low', 'en/en_US/ryan/low/en_US-ryan-low'
+foreach ($voice in $piperFiles) {
+    foreach ($ext in 'onnx', 'onnx.json') {
+        $file = "$voice.$ext"
+        Invoke-WebRequest "$piperBase/$file" -OutFile (Join-Path $piperFolder (Split-Path $file -Leaf))
+    }
+}
 $ocrFolder = Join-Path $relayFolder 'models\tessdata'
 New-Item -ItemType Directory -Path $ocrFolder -Force | Out-Null
 foreach ($code in 'ind', 'eng') {

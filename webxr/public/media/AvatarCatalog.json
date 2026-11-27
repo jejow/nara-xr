@@ -1,0 +1,274 @@
+{
+  "entries": [
+    {
+      "id": "Female_Adult_01",
+      "label": "Nadia",
+      "gender": "female",
+      "portrait": 0,
+      "featured": false,
+      "voiceStyle": "F1+F2",
+      "voiceRate": 1.01
+    },
+    {
+      "id": "Male_Adult_01",
+      "label": "Raka",
+      "gender": "male",
+      "portrait": 1,
+      "featured": false,
+      "voiceStyle": "M1+M2",
+      "voiceRate": 1.01
+    },
+    {
+      "id": "Female_Adult_02",
+      "label": "Maya",
+      "gender": "female",
+      "portrait": 2,
+      "featured": false,
+      "voiceStyle": "F1+F3",
+      "voiceRate": 0.96
+    },
+    {
+      "id": "Male_Adult_02",
+      "label": "Dimas",
+      "gender": "male",
+      "portrait": 3,
+      "featured": false,
+      "voiceStyle": "M1+M3",
+      "voiceRate": 0.96
+    },
+    {
+      "id": "Female_Adult_03",
+      "label": "Sari",
+      "gender": "female",
+      "portrait": 4,
+      "featured": false,
+      "voiceStyle": "F1+F4",
+      "voiceRate": 1.04
+    },
+    {
+      "id": "Male_Adult_03",
+      "label": "Niko",
+      "gender": "male",
+      "portrait": 5,
+      "featured": false,
+      "voiceStyle": "M1+M4",
+      "voiceRate": 1.04
+    },
+    {
+      "id": "Female_Adult_04",
+      "label": "Dian",
+      "gender": "female",
+      "portrait": 6,
+      "featured": false,
+      "voiceStyle": "F1+F5",
+      "voiceRate": 0.99
+    },
+    {
+      "id": "Male_Adult_04",
+      "label": "Arman",
+      "gender": "male",
+      "portrait": 7,
+      "featured": false,
+      "voiceStyle": "M1+M5",
+      "voiceRate": 0.99
+    },
+    {
+      "id": "Female_Adult_05",
+      "label": "Kirana",
+      "gender": "female",
+      "portrait": 8,
+      "featured": false,
+      "voiceStyle": "F2+F3",
+      "voiceRate": 1.02
+    },
+    {
+      "id": "Male_Adult_05",
+      "label": "Bima",
+      "gender": "male",
+      "portrait": 9,
+      "featured": false,
+      "voiceStyle": "M2+M3",
+      "voiceRate": 1.02
+    },
+    {
+      "id": "Female_Adult_06",
+      "label": "Alma",
+      "gender": "female",
+      "portrait": 10,
+      "featured": false,
+      "voiceStyle": "F2+F4",
+      "voiceRate": 1.01
+    },
+    {
+      "id": "Male_Adult_06",
+      "label": "Aditya",
+      "gender": "male",
+      "portrait": 11,
+      "featured": false,
+      "voiceStyle": "M2+M4",
+      "voiceRate": 1.01
+    },
+    {
+      "id": "Female_Adult_07",
+      "label": "Vina",
+      "gender": "female",
+      "portrait": 12,
+      "featured": false,
+      "voiceStyle": "F2+F5",
+      "voiceRate": 0.96
+    },
+    {
+      "id": "Male_Adult_07",
+      "label": "Galih",
+      "gender": "male",
+      "portrait": 13,
+      "featured": false,
+      "voiceStyle": "M2+M5",
+      "voiceRate": 0.96
+    },
+    {
+      "id": "Female_Adult_08",
+      "label": "Rena",
+      "gender": "female",
+      "portrait": 14,
+      "featured": false,
+      "voiceStyle": "F3+F4",
+      "voiceRate": 1.04
+    },
+    {
+      "id": "Male_Adult_08",
+      "label": "Rizky",
+      "gender": "male",
+      "portrait": 15,
+      "featured": false,
+      "voiceStyle": "M3+M4",
+      "voiceRate": 1.04
+    },
+    {
+      "id": "Female_Adult_09",
+      "label": "Lina",
+      "gender": "female",
+      "portrait": 16,
+      "featured": false,
+      "voiceStyle": "F1",
+      "voiceRate": 0.99
+    },
+    {
+      "id": "Male_Adult_09",
+      "label": "Fajar",
+      "gender": "male",
+      "portrait": 17,
+      "featured": false,
+      "voiceStyle": "M4",
+      "voiceRate": 0.99
+    },
+    {
+      "id": "Female_Adult_10",
+      "label": "Ratri",
+      "gender": "female",
+      "portrait": 18,
+      "featured": false,
+      "voiceStyle": "F2",
+      "voiceRate": 1.02
+    },
+    {
+      "id": "Male_Adult_10",
+      "label": "Ari",
+      "gender": "male",
+      "portrait": 19,
+      "featured": false,
+      "voiceStyle": "M1",
+      "voiceRate": 1.02
+    },
+    {
+      "id": "Female_Adult_11",
+      "label": "Tara",
+      "gender": "female",
+      "portrait": 20,
+      "featured": false,
+      "voiceStyle": "F3",
+      "voiceRate": 1.01
+    },
+    {
+      "id": "Male_Adult_11",
+      "label": "Rio",
+      "gender": "male",
+      "portrait": 21,
+      "featured": false,
+      "voiceStyle": "M3",
+      "voiceRate": 1.01
+    },
+    {
+      "id": "Female_Adult_12",
+      "label": "Dewi",
+      "gender": "female",
+      "portrait": 22,
+      "featured": false,
+      "voiceStyle": "F4",
+      "voiceRate": 0.96
+    },
+    {
+      "id": "Male_Adult_12",
+      "label": "Bagas",
+      "gender": "male",
+      "portrait": 23,
+      "featured": false,
+      "voiceStyle": "M5",
+      "voiceRate": 0.96
+    },
+    {
+      "id": "Female_Adult_13",
+      "label": "Laras",
+      "gender": "female",
+      "portrait": 24,
+      "featured": true,
+      "voiceStyle": "F5",
+      "voiceRate": 1.04
+    },
+    {
+      "id": "Male_Adult_13",
+      "label": "Satria",
+      "gender": "male",
+      "portrait": 25,
+      "featured": true,
+      "voiceStyle": "M2",
+      "voiceRate": 1.04
+    },
+    {
+      "id": "Female_Adult_14",
+      "label": "Naya",
+      "gender": "female",
+      "portrait": 26,
+      "featured": false,
+      "voiceStyle": "F3+F5",
+      "voiceRate": 0.99
+    },
+    {
+      "id": "Male_Adult_14",
+      "label": "Jati",
+      "gender": "male",
+      "portrait": 27,
+      "featured": false,
+      "voiceStyle": "M3+M5",
+      "voiceRate": 0.99
+    },
+    {
+      "id": "Female_Adult_15",
+      "label": "Mira",
+      "gender": "female",
+      "portrait": 28,
+      "featured": false,
+      "voiceStyle": "F4+F5",
+      "voiceRate": 1.02
+    },
+    {
+      "id": "Male_Adult_15",
+      "label": "Reza",
+      "gender": "male",
+      "portrait": 29,
+      "featured": false,
+      "voiceStyle": "M4+M5",
+      "voiceRate": 1.02
+    }
+  ]
+}

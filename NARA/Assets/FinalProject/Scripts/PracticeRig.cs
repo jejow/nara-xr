@@ -12,7 +12,7 @@ namespace Nara.Practice
         readonly List<XRInputSubsystem> inputs = new();
         NaraPractice app;
         PracticeView view;
-        bool lastA, lastB, lastY, lastRightGrip, lastLeftGrip, lastSkip;
+        bool lastA, lastB, lastX, lastY, lastRightGrip, lastLeftGrip, lastSkip, lastType;
         bool classroomGripReady;
         float yaw, pitch, holdToEnd, framingYaw, framingVelocity;
         public bool Active { get; private set; }
@@ -51,7 +51,7 @@ namespace Nara.Practice
             }
             if (Active)
                 ReadControllers();
-            else
+            else if (!NaraQuestBridge.IsStandalone)
                 ReadDesktop();
         }
 
@@ -158,9 +158,35 @@ namespace Nara.Practice
             bool rightGrip = Read(right, CommonUsages.gripButton);
             bool leftGrip = Read(left, CommonUsages.gripButton);
             bool skip = Read(left, CommonUsages.triggerButton);
+            bool type = Read(right, CommonUsages.triggerButton);
 
             bool setup = app.Session.Phase == PracticePhase.Setup;
-            if (a && !lastA)
+            bool gated = view.UpdateQuestInputGate(a || b || x || y || rightGrip || leftGrip || skip || type);
+            if (!gated && setup && NaraQuestBridge.IsStandalone && (view.QuestSettingsOpen || rightGrip && !lastRightGrip))
+            {
+                view.QuestSetupControls(a && !lastA, b && !lastB, x && !lastX, y && !lastY,
+                    rightGrip && !lastRightGrip, leftGrip && !lastLeftGrip, type && !lastType);
+            }
+            else if (!gated)
+            {
+                ReadPracticeControls(setup, a, b, x, y, rightGrip, leftGrip, skip, type);
+            }
+            lastA = a;
+            lastB = b;
+            lastX = x;
+            lastY = y;
+            lastRightGrip = rightGrip;
+            lastLeftGrip = leftGrip;
+            lastSkip = skip;
+            lastType = type;
+        }
+
+        void ReadPracticeControls(bool setup, bool a, bool b, bool x, bool y,
+            bool rightGrip, bool leftGrip, bool skip, bool type)
+        {
+            if (type && !lastType && NaraQuestBridge.IsStandalone && !app.Recording)
+                view.OpenQuestResponseKeyboard();
+            else if (a && !lastA)
                 PrimaryAction();
             if (b && !lastB)
             {
@@ -211,12 +237,6 @@ namespace Nara.Practice
             {
                 holdToEnd = 0;
             }
-            lastA = a;
-            lastB = b;
-            lastY = y;
-            lastRightGrip = rightGrip;
-            lastLeftGrip = leftGrip;
-            lastSkip = skip;
         }
 
         void PrimaryAction()

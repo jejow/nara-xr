@@ -1,0 +1,5 @@
+-keep class id.ac.its.nara.quest.NaraQuest { public static *; }
+-keep class id.ac.its.nara.quest.NaraDocumentPicker { public *; }
+-keep class com.k2fsa.sherpa.onnx.** { *; }
+-keep class com.googlecode.tesseract.android.** { *; }
+-keep class com.googlecode.leptonica.android.** { *; }

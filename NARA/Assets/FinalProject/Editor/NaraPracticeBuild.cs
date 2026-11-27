@@ -187,7 +187,7 @@ namespace Nara.Practice.Editor
                 PlayerSettings.fullScreenMode = FullScreenMode.Windowed;
                 PlayerSettings.defaultScreenWidth = 1280;
                 PlayerSettings.defaultScreenHeight = 800;
-                if (target == BuildTarget.StandaloneWindows64)
+                if (target is BuildTarget.StandaloneWindows64 or BuildTarget.Android)
                     PlayerSettings.insecureHttpOption = InsecureHttpOption.AlwaysAllowed;
                 BuildReport report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
                 {

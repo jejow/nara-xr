@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools" package="id.ac.its.nara.quest">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+    <uses-feature android:name="oculus.software.overlay_keyboard" android:required="false" />
+    <application android:allowBackup="false" android:networkSecurityConfig="@xml/nara_network_security">
+        <activity android:name="id.ac.its.nara.quest.NaraDocumentPicker"
+            android:exported="false"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+        <meta-data android:name="unityplayer.SkipPermissionsDialog" android:value="true" />
+    </application>
+</manifest>

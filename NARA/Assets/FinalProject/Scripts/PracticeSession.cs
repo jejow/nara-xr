@@ -41,6 +41,7 @@ namespace Nara.Practice
         public string anchor;
         public string audio;
         public bool audioDeferred;
+        public bool audioStream;
         public string source;
         public string speaker;
     }

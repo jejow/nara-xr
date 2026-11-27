@@ -16,12 +16,19 @@ namespace Nara.Practice
 
         UnityWebRequest voiceRequest, transcriptRequest;
         Coroutine voiceDownload, transcriptDownload;
+        StreamedNpcAudio playingVoice, replayVoice;
+        AudioClip streamClip;
         int transcribedBytes;
         bool transcriptUnavailable;
         bool processingAudioTurn;
         public bool SpeechPending => voiceRequest != null;
+        public bool PreparingSpeech => SpeechPending && SpeakingSeat < 0;
         public bool PreparingTranscript => transcriptRequest != null || processingAudioTurn;
         internal int PreparedPresentationBytes => transcribedBytes;
+        internal bool PlayingVoiceStream => streamClip && voice.isPlaying;
+        internal string StreamVoiceProvider { get; private set; }
+        internal float SpeechProgress => SpeechPosition(false);
+        internal float SubtitleProgress => SpeechPosition(true);
 
         [Serializable]
         sealed class SpeechInput
@@ -41,12 +48,12 @@ namespace Nara.Practice
             public string transcript;
         }
 
-        UnityWebRequest RelayPost(string path, string json, int timeout)
+        UnityWebRequest RelayPost(string path, string json, int timeout, DownloadHandler response = null)
         {
             var request = new UnityWebRequest(settings.endpoint + path, "POST")
             {
                 uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(json)),
-                downloadHandler = new DownloadHandlerBuffer(),
+                downloadHandler = response ?? new DownloadHandlerBuffer(),
                 timeout = timeout,
                 redirectLimit = 0
             };
@@ -62,10 +69,62 @@ namespace Nara.Practice
             catch (InvalidOperationException) { return null; }
         }
 
-        IEnumerator DownloadVoice(TurnReply reply, int seat)
+        void StartDeferredVoice(TurnReply reply, int seat)
         {
-            var input = new SpeechInput { speaker = reply.speaker, language = language, text = reply.text };
-            using var request = RelayPost("/speech", JsonUtility.ToJson(input), VoiceDeadline);
+            var input = new SpeechInput { speaker = reply.speaker, language = language, text = reply.text.Trim() };
+            string json = JsonUtility.ToJson(input);
+            voiceDownload = StartCoroutine(reply.audioStream
+                ? DownloadVoiceStream(json, reply, seat)
+                : DownloadVoice(json, reply, seat));
+        }
+
+        IEnumerator DownloadVoiceStream(string json, TurnReply reply, int seat)
+        {
+            var stream = new PracticeVoiceStream(reply.text.Trim().Length);
+            using var request = RelayPost("/speech-stream", json, VoiceDeadline, stream);
+            voiceRequest = request;
+            var operation = TrySend(request);
+            bool handledPlayback = false;
+            while (operation != null && !operation.isDone && !stream.Failed)
+            {
+                if (!handledPlayback && stream.Audio.HasLead && DeferredSpeechPhase)
+                {
+                    handledPlayback = true;
+                    if (MayPlayDeferredSpeech)
+                    {
+                        streamClip = stream.Audio.CreatePlayback();
+                        playingVoice = stream.Audio;
+                        StreamVoiceProvider = stream.Provider;
+                        Speak(reply.text, streamClip, seat, DeferredCue);
+                    }
+                }
+                yield return null;
+            }
+            voiceRequest = null;
+            voiceDownload = null;
+            stream.Audio.Finish();
+            if (operation == null || !operation.isDone || request.result != UnityWebRequest.Result.Success ||
+                !stream.Complete || stream.Failed)
+            {
+                if (operation != null && !operation.isDone)
+                    request.Abort();
+                Notify("Suara NPC terputus. Kamu bisa lanjut lewat teks.", 6);
+                yield break;
+            }
+            AudioClip clip = stream.Audio.CreateReplay();
+            if (!clip)
+                yield break;
+            StreamVoiceProvider = stream.Provider;
+            ReplaceGeneratedAudio(clip);
+            replayVoice = stream.Audio;
+            lastAudio = clip;
+            if (!handledPlayback && MayPlayDeferredSpeech)
+                Speak(reply.text, clip, seat, DeferredCue);
+        }
+
+        IEnumerator DownloadVoice(string json, TurnReply reply, int seat)
+        {
+            using var request = RelayPost("/speech", json, VoiceDeadline);
             voiceRequest = request;
             var operation = TrySend(request);
             if (operation != null)
@@ -81,11 +140,41 @@ namespace Nara.Practice
             }
             ReplaceGeneratedAudio(clip);
             lastAudio = clip;
-            // The player may have already started answering from the caption.
-            if (Session.Phase == PracticePhase.Review)
-                Speak(reply.text, clip, seat, AudienceLine.Feedback);
-            else if (Session.Phase == PracticePhase.Question && !Recording && !view.AnswerInProgress)
-                Speak(reply.text, clip, seat, QuestionCue());
+            if (MayPlayDeferredSpeech)
+                Speak(reply.text, clip, seat, DeferredCue);
+        }
+
+        bool DeferredSpeechPhase => Session.Phase is PracticePhase.Question or PracticePhase.Review;
+        bool MayPlayDeferredSpeech => !voice.isPlaying && (Session.Phase == PracticePhase.Review ||
+            Session.Phase == PracticePhase.Question && !Recording && !view.AnswerInProgress);
+        AudienceLine DeferredCue => Session.Phase == PracticePhase.Review ? AudienceLine.Feedback : QuestionCue();
+
+        void AdvanceVoicePlayback()
+        {
+            if (streamClip && (!voice.isPlaying || playingVoice.ReachedEnd(voice.timeSamples)))
+                StopSpeech();
+        }
+
+        float SpeechPosition(bool caption)
+        {
+            if (!voice.clip)
+                return 0;
+            if (playingVoice != null && voice.clip == streamClip)
+            {
+                int frame = playingVoice.SourceFrame(voice.timeSamples);
+                return caption ? playingVoice.CaptionProgress(frame) : playingVoice.Progress(frame);
+            }
+            if (caption && replayVoice != null && voice.clip == lastAudio)
+                return replayVoice.CaptionProgress(voice.timeSamples);
+            return Mathf.Clamp01(voice.time / voice.clip.length);
+        }
+
+        void ClearStreamPlayback()
+        {
+            if (streamClip)
+                Destroy(streamClip);
+            streamClip = null;
+            playingVoice = null;
         }
 
         void ReplaceGeneratedAudio(AudioClip clip)
@@ -93,6 +182,7 @@ namespace Nara.Practice
             if (generatedAudio)
                 Destroy(generatedAudio);
             generatedAudio = clip;
+            replayVoice = null;
         }
 
         void CancelVoiceDownload()
@@ -103,6 +193,7 @@ namespace Nara.Practice
             voiceRequest?.Dispose();
             voiceRequest = null;
             voiceDownload = null;
+            StreamVoiceProvider = null;
         }
 
         void CapturePresentationInBackground()

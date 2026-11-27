@@ -10,7 +10,10 @@ namespace Nara.Practice
     {
         UnityWebRequest deckRequest;
         string pendingDeck;
+        string pickedDocument;
+        bool pickingDocument;
         public bool ImportingDeck => deckRequest != null;
+        internal bool PickingDocument => pickingDocument;
         public bool CanImportDeck => HasEndpoint && new Uri(settings.endpoint).IsLoopback &&
             !string.IsNullOrEmpty(settings.accessToken);
         public string DeckImportNotice { get; private set; } = "";
@@ -25,16 +28,49 @@ namespace Nara.Practice
 
         public void PickDeck()
         {
-            if (Session.Phase != PracticePhase.Setup || ImportingDeck)
+            if (Session.Phase != PracticePhase.Setup || ImportingDeck || pickingDocument)
                 return;
             if (!CanImportDeck)
             {
-                DeckImportNotice = "Buka NARA lewat NARA Live.cmd untuk mengimpor berkas.";
+                DeckImportNotice = NaraQuestBridge.IsStandalone ? "Impor berkas belum siap. Buka ulang NARA." :
+                    "Buka NARA lewat NARA Live.cmd untuk mengimpor berkas.";
+                return;
+            }
+            if (NaraQuestBridge.IsStandalone)
+            {
+                pickingDocument = NaraQuestBridge.PickDocument();
+                DeckImportNotice = pickingDocument ? "Pilih materi dari penyimpanan headset." : "Pemilih berkas masih terbuka.";
                 return;
             }
             string selected = PracticeFilePicker.SelectPresentation();
             if (!string.IsNullOrEmpty(selected))
                 ImportDeck(selected);
+        }
+
+        void ReceiveQuestDocument()
+        {
+            if (!pickingDocument)
+                return;
+            string result = NaraQuestBridge.ReadDocument();
+            if (string.IsNullOrEmpty(result))
+                return;
+            pickingDocument = false;
+            if (result[0] == '!')
+            {
+                DeckImportNotice = result switch
+                {
+                    "!cancel" => "",
+                    "!format" => "Pilih PPTX, PPT, PDF, PNG, atau JPEG.",
+                    "!picker" => "Pemilih berkas Android belum tersedia di perangkat ini.",
+                    "!size" => "Ukuran materi paling besar 32 MB.",
+                    _ => "Berkas belum bisa dibaca. Pilih berkas yang sudah tersimpan di headset."
+                };
+                return;
+            }
+            pickedDocument = result;
+            ImportDeck(result);
+            if (!ImportingDeck)
+                DeletePickedDocument();
         }
 
         internal void ImportDeck(string source)
@@ -80,6 +116,8 @@ namespace Nara.Practice
                 request.redirectLimit = 0;
                 request.SetRequestHeader("Content-Type", "application/octet-stream");
                 request.SetRequestHeader("X-NARA-Deck-Format", format);
+                if (NaraQuestBridge.IsStandalone)
+                    request.SetRequestHeader("X-NARA-Deck-Title", Uri.EscapeDataString(Path.GetFileName(source)));
                 request.SetRequestHeader("Authorization", "Bearer " + settings.accessToken);
                 conversion = request.SendWebRequest();
             }
@@ -111,7 +149,8 @@ namespace Nara.Practice
                         501 => "Komponen impor belum tersedia. Cek panduan NARA.",
                         503 => "Impor sebelumnya masih berjalan. Coba lagi sebentar.",
                         504 => "Impor terlalu lama. Coba berkas dengan slide lebih sedikit.",
-                        _ => "Relay lokal belum siap. Buka NARA lewat NARA Live.cmd."
+                        _ => NaraQuestBridge.IsStandalone ? "Impor lokal belum siap. Coba buka ulang NARA." :
+                            "Relay lokal belum siap. Buka NARA lewat NARA Live.cmd."
                     };
                 }
             }
@@ -119,7 +158,11 @@ namespace Nara.Practice
             {
                 DeckImportNotice = "Materi baru belum bisa disimpan. Materi sebelumnya tetap tersedia.";
             }
-            finally { DeletePendingDeck(); }
+            finally
+            {
+                DeletePendingDeck();
+                DeletePickedDocument();
+            }
         }
 
         public void UseExampleDeck()
@@ -144,6 +187,13 @@ namespace Nara.Practice
             deckRequest?.Dispose();
             deckRequest = null;
             DeletePendingDeck();
+            DeletePickedDocument();
+        }
+
+        void DeletePickedDocument()
+        {
+            NaraQuestBridge.DeleteSelection(pickedDocument);
+            pickedDocument = null;
         }
 
         void DeletePendingDeck()

@@ -316,7 +316,7 @@ namespace Nara.Practice
                     SetButton(metricsChoice, metrics ? "Catat waktu aktif" : "Catat waktu nonaktif");
                     SetButton(cloudChoice, cloud ? "Suara live" : "Suara offline");
                     Choice(cloudChoice, cloud);
-                    cloudChoice.interactable = app.HasEndpoint;
+                    cloudChoice.interactable = app.LiveAvailable;
                     Set(settingsNotice, LiveDataNotice);
                     break;
             }
@@ -338,7 +338,7 @@ namespace Nara.Practice
                 previousText.interactable = readingPage > 0;
                 nextText.interactable = readingPage + 1 < speechPages.Count;
             }
-            Set(desktopNotice, answering && app.SpeechPending && string.IsNullOrEmpty(app.Notice)
+            Set(desktopNotice, answering && app.PreparingSpeech && string.IsNullOrEmpty(app.Notice)
                 ? "Suara NPC sedang disiapkan. Kamu bisa langsung menjawab." : app.Notice);
             Show(grantFloor, requesting);
             Show(desktopHint, !answering);

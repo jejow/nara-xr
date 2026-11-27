@@ -38,6 +38,8 @@ namespace Nara.Practice
 
         public static VoiceSettings Load(string folder)
         {
+            if (NaraQuestBridge.IsStandalone)
+                return NaraQuestBridge.Settings();
             var result = new VoiceSettings();
             try
             {

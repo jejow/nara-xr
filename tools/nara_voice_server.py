@@ -4,6 +4,7 @@ import argparse
 import base64
 import binascii
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import hmac
@@ -24,6 +25,7 @@ import wave
 
 from nara_cast_voices import CastSpeech, load_content, voice_path
 from nara_import_deck import FORMATS as DECK_FORMATS, MAX_UPLOAD as MAX_DECK_UPLOAD
+from nara_stream_speech import StreamSpeech
 
 OPENAI_API = "https://api.openai.com/v1/"
 AISUBS_API = "https://api.aisubs.id/v1/"
@@ -120,11 +122,14 @@ def aisubs_options(data):
     return options
 
 
-def valid_reply(reply, operation, answer, history):
+def valid_reply(reply, operation, answer, history, speaker_names=()):
     if not isinstance(reply, dict) or set(reply) != {"kind", "text", "anchor"} or not all(
             isinstance(value, str) for value in reply.values()):
         raise BadTurn()
     text = clipped(reply.get("text"), 420)
+    prefix, colon, spoken = text.partition(":")
+    if colon and any(name and prefix.rstrip().casefold() == name.casefold() for name in speaker_names):
+        text = spoken.strip()
     kind = reply.get("kind")
     anchor = clipped(reply.get("anchor"), 100)
     if not text or len(reply["text"].strip()) > 420 or len(text.split()) > 60 or text.count("?") > 1:
@@ -162,7 +167,8 @@ def read_wav(encoded):
 
 
 class VoiceService:
-    def __init__(self, key, mock, voice_model=None, *, provider="openai", stt_dir=None, audio_key=None):
+    def __init__(self, key, mock, voice_model=None, *, provider="openai", stt_dir=None, audio_key=None,
+                 piper_dir=None, cartesia_key=None, cartesia_key_file=None):
         self.text_key = key
         self.provider = provider
         self.audio_key = audio_key or (key if provider == "openai" else "")
@@ -177,6 +183,8 @@ class VoiceService:
         self.engine = CastSpeech(voice_model) if voice_model else None
         self.speech_worker = ThreadPoolExecutor(max_workers=1) if self.engine else None
         self.speech_lock = Lock()
+        self.streaming = StreamSpeech(piper_dir, cartesia_key, cartesia_key_file, upstream,
+                                      self.avatar_speech if self.engine else None)
         self.recognizer = None
         self.transcript_lock = Lock()
         if stt_dir:
@@ -286,15 +294,23 @@ class VoiceService:
             text = ""  # Silence still consumes this part of the recording.
         return {"transcript": text}
 
-    def prepare_voice(self, incoming):
+    def voice_input(self, incoming):
         speaker, language = incoming.get("speaker"), incoming.get("language")
         text = incoming.get("text")
         if (speaker not in self.profiles or language not in {"id", "en"}
                 or not isinstance(text, str) or not 0 < len(text) <= 420 or not text.strip()):
             raise BadTurn()
+        return speaker, language, text.strip()
+
+    def prepare_voice(self, incoming):
+        speaker, language, text = self.voice_input(incoming)
         if not self.engine:
             raise ConnectionError("Local character voices are unavailable.")
         return self.avatar_speech(speaker, language, text, time.monotonic() + VOICE_TIMEOUT)
+
+    def prepare_voice_stream(self, incoming):
+        speaker, language, text = self.voice_input(incoming)
+        return self.streaming.events(self.profiles[speaker], language, text, time.monotonic() + VOICE_TIMEOUT)
 
     def write_reply(self, context, deadline):
         data = {
@@ -336,7 +352,8 @@ class VoiceService:
             if choice.get("finish_reason") != "stop":
                 raise BadTurn()
             return valid_reply(json.loads(choice["message"]["content"]), context["operation"],
-                               context["latest_answer"], context["history"])
+                               context["latest_answer"], context["history"],
+                               (context.get("questioner"), context.get("lead")))
         except TimeoutError:
             print("NARA_DIALOGUE_TIMEOUT", flush=True)
             raise
@@ -352,13 +369,14 @@ class VoiceService:
         if operation not in OPERATIONS or language not in {"id", "en"}:
             raise BadTurn()
         speaker, lead = incoming.get("speaker"), incoming.get("lead")
+        deferred = incoming.get("deferAudio") is True
         if speaker is not None or lead is not None:
             if speaker not in self.profiles or lead not in self.profiles:
                 raise BadTurn()
             if operation == "feedback" and speaker != lead:
                 raise BadTurn()
-            if not self.mock and self.engine is None:
-                raise ConnectionError("Matched live voices need a model.")
+            if not self.mock and self.engine is None and not (deferred and self.streaming.available):
+                raise ConnectionError("A voice model is required for this dialogue.")
         topic = clipped(incoming.get("topic"), 100)
         if not topic:
             raise BadTurn()
@@ -417,9 +435,9 @@ class VoiceService:
         reply = self.write_reply(context, deadline)
         selected = lead if reply["kind"] == "feedback" else speaker
         reply.update(transcript=transcript, source="live", speaker=selected or "")
-        if selected and incoming.get("deferAudio") is True:
+        if selected and deferred:
             print(f"NARA_TEXT_READY {operation} {'audio' if audio else 'text'} {time.monotonic() - started:.2f}s", flush=True)
-            reply.update(audio="", audioDeferred=True)
+            reply.update(audio="", audioDeferred=True, audioStream=self.streaming.available)
             return reply
         if selected:
             try:
@@ -483,13 +501,33 @@ class VoiceHandler(BaseHTTPRequestHandler):
         except (ConnectionError, TimeoutError):
             pass
 
+    def send_voice_stream(self, events):
+        # Close this response after its last chunk. Other routes retain their existing framing.
+        self.protocol_version = "HTTP/1.1"
+        self.close_connection = True
+        try:
+            with closing(events):
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
+                self.send_header("Transfer-Encoding", "chunked")
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Connection", "close")
+                self.end_headers()
+                for event in events:
+                    line = json.dumps(event, separators=(",", ":")).encode() + b"\n"
+                    self.wfile.write(f"{len(line):x}\r\n".encode() + line + b"\r\n")
+                self.wfile.write(b"0\r\n\r\n")
+        except (ConnectionError, TimeoutError):
+            pass
+
     def do_GET(self):
         if self.path == "/health":
             if not self.authorized():
                 return
             service = self.server.voice
             self.send_json(HTTPStatus.OK, {"status": "ready", "source": "mock" if service.mock else "live",
-                                           "provider": "mock" if service.mock else service.provider, "api": 4,
+                                           "provider": "mock" if service.mock else service.provider, "api": 5,
+                                           "voiceStream": service.streaming.preferred,
                                            "model": "" if service.mock else service.text_model,
                                            "fallbackModel": "" if service.mock else service.fallback_model})
         else:
@@ -499,7 +537,7 @@ class VoiceHandler(BaseHTTPRequestHandler):
         if self.path == "/import-deck":
             self.import_deck()
             return
-        if self.path not in {"/turn", "/speech", "/transcribe"}:
+        if self.path not in {"/turn", "/speech", "/speech-stream", "/transcribe"}:
             self.send_json(HTTPStatus.NOT_FOUND, {"error": "not_found"})
             return
         if self.headers.get_content_type() != "application/json":
@@ -507,13 +545,14 @@ class VoiceHandler(BaseHTTPRequestHandler):
             return
         if not self.authorized():
             return
-        if not self.server.workers.acquire(blocking=False):
+        workers = self.server.voice_workers if self.path == "/speech-stream" else self.server.workers
+        if not workers.acquire(blocking=False):
             self.send_json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "busy"})
             return
         try:
             self.connection.settimeout(8)
             size = int(self.headers.get("Content-Length", "0"))
-            limit = {"/speech": 3_500, "/transcribe": 900_000}.get(self.path, MAX_BODY)
+            limit = {"/speech": 3_500, "/speech-stream": 3_500, "/transcribe": 900_000}.get(self.path, MAX_BODY)
             if not 0 < size <= limit:
                 self.send_json(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, {"error": "size"})
                 return
@@ -526,6 +565,8 @@ class VoiceHandler(BaseHTTPRequestHandler):
                 if len(wav) > MAX_REPLY:
                     raise BadTurn()
                 self.send_bytes(HTTPStatus.OK, wav, "audio/wav")
+            elif self.path == "/speech-stream":
+                self.send_voice_stream(service.prepare_voice_stream(payload))
             else:
                 reply = service.prepare_transcript(payload) if self.path == "/transcribe" else service.process(payload)
                 self.send_json(HTTPStatus.OK, reply)
@@ -540,7 +581,7 @@ class VoiceHandler(BaseHTTPRequestHandler):
         except (BadTurn, KeyError, IndexError, ValueError, TypeError, AttributeError):
             self.send_json(HTTPStatus.UNPROCESSABLE_ENTITY, {"error": "unusable"})
         finally:
-            self.server.workers.release()
+            workers.release()
 
     def import_deck(self):
         if not self.server.access_token:
@@ -614,6 +655,9 @@ def main():
                       help="Local Supertonic 3 model directory for matched avatar voices")
     args.add_argument("--stt-model", default=os.getenv("NARA_LOCAL_STT_MODEL"),
                       help="Local Faster Whisper model directory for microphone transcription")
+    args.add_argument("--piper-dir", default=os.getenv("NARA_PIPER_DIR"),
+                      help="Directory of optional low-latency Piper voices")
+    args.add_argument("--cartesia-key-file", help="Optional Windows DPAPI credential written by the NARA launcher")
     config = args.parse_args()
     aisubs_key = os.getenv("AISUBS_API_KEY", "").strip()
     openai_key = os.getenv("OPENAI_API_KEY", "").strip()
@@ -627,14 +671,19 @@ def main():
     if not config.mock and provider == "aisubs" and not (config.stt_model or openai_key):
         args.error("AISUBS dialogue needs --stt-model for local microphone transcription, or OPENAI_API_KEY for transcription.")
     service = VoiceService(key, config.mock, None if config.mock else config.voice_model, provider=provider,
-                           stt_dir=None if config.mock else config.stt_model, audio_key=openai_key)
+                           stt_dir=None if config.mock else config.stt_model, audio_key=openai_key,
+                           piper_dir=None if config.mock else config.piper_dir,
+                           cartesia_key=None if config.mock else os.getenv("CARTESIA_API_KEY", "").strip(),
+                           cartesia_key_file=None if config.mock else config.cartesia_key_file)
     with ThreadingHTTPServer(("127.0.0.1", config.port), VoiceHandler) as server:
         server.voice = service
         server.access_token = os.getenv("NARA_ACCESS_TOKEN", "")
         server.workers = BoundedSemaphore(3)
+        server.voice_workers = BoundedSemaphore(2)
         server.deck_worker = BoundedSemaphore(1)
         mode = "mock" if config.mock else f"live {service.provider}/{service.text_model}"
         print(f"NARA voice relay available at http://127.0.0.1:{config.port} ({mode})", flush=True)
+        service.streaming.piper.warm()
         try:
             server.serve_forever()
         except KeyboardInterrupt:

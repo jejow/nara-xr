@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.venv/
+.env*
+!.env.example
+/public/media/LocalAudienceRaises.bytes
+playwright-report/
+test-results/
+.openai/cache/
+/.openai/hosting.json
+.netlify/

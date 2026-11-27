@@ -37,7 +37,9 @@ namespace Nara.Practice
             HeadsetAction(xrPresentation, "B", "Lanjut slide", 201, 64, 192);
             xrPause = HeadsetAction(xrPresentation, "Grip kiri", "Jeda", 403, 64, 205);
             HeadsetAction(xrPresentation, "A", "Tanya jawab", 619, 64, 213, true);
-            Label(xrPresentation, "Tahan X untuk mengakhiri latihan", 21, FontStyle.Normal, Muted, 24, 128, 806, 29);
+            Label(xrPresentation, NaraQuestBridge.IsStandalone ?
+                "Pelatuk kanan ketik  ·  Tahan X akhiri" : "Tahan X untuk mengakhiri latihan",
+                21, FontStyle.Normal, Muted, 24, 128, 806, 29);
 
             xrConversation = Card(root, "Tanya jawab headset", Navy, 55, 302, 850, 270);
             xrStatus = Label(xrConversation, "", 25, FontStyle.Bold, Tint, 26, 12, 504, 38, TextAnchor.MiddleLeft, 22);
@@ -59,6 +61,8 @@ namespace Nara.Practice
             xrSuggestion = Label(xrReview, "", 31, FontStyle.Bold, White, 30, 184, 762, 121, TextAnchor.UpperLeft, 23);
             HeadsetAction(xrReview, "Grip kiri", "Putar saran", 30, 321, 373);
             HeadsetAction(xrReview, "A", "Latihan baru", 420, 321, 372, true);
+            if (NaraQuestBridge.IsStandalone)
+                BuildQuestSettings(root);
         }
 
         Text HeadsetAction(RectTransform parent, string key, string title, float x, float y, float width, bool primary = false)
@@ -79,7 +83,9 @@ namespace Nara.Practice
             bool asking = !preparing && !presenting && !reviewing;
             bool seeingSpeaker = state == PracticePhase.Asking && SpeechBubbleVisible;
             canvas.transform.localPosition = asking ? new Vector3(0, -.22f, 0) : Vector3.zero;
-            Show(xrSetup, preparing);
+            Show(xrSetup, preparing && !QuestSettingsOpen);
+            if (NaraQuestBridge.IsStandalone)
+                RefreshQuestSettings(preparing);
             Show(xrPresentation, presenting);
             Show(xrGreetingCard, presenting && !SpeechBubbleVisible && !string.IsNullOrEmpty(app.GreetingText));
             Set(xrGreeting, string.IsNullOrEmpty(app.GreetingText) ? "" : SpokenPage);
@@ -95,7 +101,9 @@ namespace Nara.Practice
                 Set(xrMetrics, metrics ? "Catat waktu aktif" : "Catat waktu mati");
                 Set(xrClassroom, app.ClassroomName);
                 Set(xrConsent, string.IsNullOrEmpty(app.Notice) ?
-                    cloud ? LiveDataNotice : "" : app.Notice);
+                    cloud ? LiveDataNotice : NaraQuestBridge.IsStandalone ? "Grip kanan · Pengaturan Quest" : "" : app.Notice);
+                if (cloud && NaraQuestBridge.IsStandalone && string.IsNullOrEmpty(app.Notice))
+                    Set(xrConsent, "Teks dikirim ke AISUBS.  ·  Grip kanan: Pengaturan Quest");
                 return;
             }
             if (presenting)
@@ -126,10 +134,12 @@ namespace Nara.Practice
             Set(xrAction, state == PracticePhase.FloorRequest ? "A  Persilakan bertanya" :
                 answering ? app.Live ? "Grip kanan  Tahan bicara" : "A  Sudah jawab" :
                 state == PracticePhase.Asking ? "Dengarkan pertanyaan" : "Tunggu sebentar");
-            Set(xrAnswers, answering ? app.CanReplay ? "Grip kiri putar ulang\nPelatuk kiri lewati" : "Pelatuk kiri lewati" : "");
+            Set(xrAnswers, answering ? NaraQuestBridge.IsStandalone ?
+                "Pelatuk kanan ketik\nPelatuk kiri lewati" :
+                app.CanReplay ? "Grip kiri putar ulang\nPelatuk kiri lewati" : "Pelatuk kiri lewati" : "");
             Set(xrNotice, !string.IsNullOrEmpty(app.Notice) ? app.Notice : CanPageQuestion ?
                 $"Y / B  Baca teks  ·  {readingPage + 1} / {speechPages.Count}" :
-                answering && app.SpeechPending ? "Suara NPC sedang disiapkan." : "Tahan X untuk mengakhiri latihan");
+                answering && app.PreparingSpeech ? "Suara NPC sedang disiapkan." : "Tahan X untuk mengakhiri latihan");
         }
     }
 }

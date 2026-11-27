@@ -128,7 +128,7 @@ namespace Nara.Practice
                 Show(speechCanvas, false);
                 return;
             }
-            SetSpeechPage(app.SpeechText, width, app.voice.clip ? app.voice.time / app.voice.clip.length : 0);
+            SetSpeechPage(app.SpeechText, width, app.SubtitleProgress);
             if (app.Baseline || app.ViewingProjection || phase is PracticePhase.Setup or PracticePhase.Review ||
                 !PlaceSpeech(camera, head, units))
             {

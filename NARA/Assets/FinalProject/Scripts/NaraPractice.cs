@@ -65,9 +65,11 @@ namespace Nara.Practice
         public bool Mock => usedMock;
         public bool XrActive => rig != null && rig.Active;
         public bool HasEndpoint => !string.IsNullOrEmpty(settings?.endpoint);
+        public bool LiveAvailable => HasEndpoint && (!NaraQuestBridge.IsStandalone || NaraQuestBridge.Configured);
         public bool Recording => mic.Recording;
         public string Language => language;
         public string SpeechText { get; private set; } = "";
+        internal float VoiceStartedAt { get; private set; }
         public int SpeakingSeat => voice && voice.isPlaying ? speakerSeat : -1;
         public string GreetingText => greeting ? SpeechText : "";
         public string Notice => Time.unscaledTime < noticeUntil ? notice : "";
@@ -143,9 +145,11 @@ namespace Nara.Practice
 
         void Update()
         {
+            if (NaraQuestBridge.IsStandalone)
+                ReceiveQuestDocument();
             if (greeting && !voice.isPlaying)
                 greeting = false;
-            if (Session.Phase == PracticePhase.Presentation && !Session.Paused && !greeting)
+            if (Session.Phase == PracticePhase.Presentation && !Session.Paused && !greeting && !view.QuestTyping)
             {
                 Session.Tick(Time.unscaledDeltaTime);
                 if (Session.Remaining <= 0)
@@ -154,6 +158,7 @@ namespace Nara.Practice
             if (mic.ReachedLimit)
                 EndTalk();
             CapturePresentationInBackground();
+            AdvanceVoicePlayback();
             if (!voice.isPlaying)
             {
                 SpeechText = "";
@@ -190,7 +195,7 @@ namespace Nara.Practice
             questionSeat = firstSeat;
             language = selectedLanguage == "en" ? "en" : "id";
             Baseline = baseline && !XrActive;
-            Live = cloudConsent && HasEndpoint && networkAvailable;
+            Live = cloudConsent && LiveAvailable && networkAvailable;
             usedMock = sawLiveReply = false;
             logMetrics = metrics;
             fallbacks = 0;
@@ -446,6 +451,8 @@ namespace Nara.Practice
                 string key = request.responseCode == 422 ? "unusable" :
                     request.responseCode == 504 ? "timeout" : "connection";
                 FallBack(key, key == "unusable" && !string.IsNullOrEmpty(turn.audio));
+                if (NaraQuestBridge.IsStandalone && request.responseCode is 401 or 403)
+                    Notify("AISUBS menolak kunci. Periksa kunci dan akses GPT-6.1 Sol di Pengaturan Quest.");
                 yield break;
             }
             TurnReply reply;
@@ -479,7 +486,7 @@ namespace Nara.Practice
             ReplaceGeneratedAudio(clip);
             ShowReply(reply.text, clip, seat, false, reply.audioDeferred);
             if (reply.audioDeferred && !clip)
-                voiceDownload = StartCoroutine(DownloadVoice(reply, seat));
+                StartDeferredVoice(reply, seat);
         }
 
         int SeatForTurn(string operation, string kind = null) => kind == PracticeSession.Feedback
@@ -568,6 +575,11 @@ namespace Nara.Practice
         {
             if (!clip)
                 return;
+            if (streamClip && clip != streamClip)
+            {
+                voice.Stop();
+                ClearStreamPlayback();
+            }
             SpeechText = text;
             currentLine = cue;
             speakerSeat = seat;
@@ -575,6 +587,7 @@ namespace Nara.Practice
             if (speaker)
                 voice.transform.position = speaker.position;
             voice.clip = clip;
+            VoiceStartedAt = Time.realtimeSinceStartup;
             voice.Play();
         }
 
@@ -583,6 +596,7 @@ namespace Nara.Practice
             speech.Clear();
             voice.Stop();
             voice.clip = null;
+            ClearStreamPlayback();
             speakerSeat = -1;
             greeting = false;
             SpeechText = "";
@@ -616,7 +630,7 @@ namespace Nara.Practice
             Vector3 presenter = XrActive ? eyes.position : eyes.parent.position;
             audience.Animate(now, listens, amplitude, articulation, activeSpeaker,
                 presenter, questionSeat, Session.Phase == PracticePhase.FloorRequest, nod, currentLine,
-                activeSpeaker >= 0 && voice.clip ? Mathf.Clamp01(voice.time / voice.clip.length) : 0);
+                activeSpeaker >= 0 ? SpeechProgress : 0);
         }
 
         public void Notify(string text, float seconds = 4)
@@ -665,9 +679,8 @@ namespace Nara.Practice
             questionStartsAt = -1;
             floorGrantedAt = -10;
             answerWhileSpeaking = false;
-            if (generatedAudio)
-                Destroy(generatedAudio);
-            generatedAudio = lastAudio = null;
+            ReplaceGeneratedAudio(null);
+            lastAudio = null;
         }
 
         [Serializable]
@@ -726,6 +739,8 @@ namespace Nara.Practice
         {
             CancelDeckImport();
             CancelRequest();
+            if (voice)
+                StopSpeech();
             mic.Dispose();
             presentationAudio.Dispose();
             Deck.Dispose();

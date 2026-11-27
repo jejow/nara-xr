@@ -1,0 +1,16 @@
+# Sumber aset NARA
+
+| Aset | Asal dan catatan distribusi |
+|---|---|
+| Arsitektur kelas | **Classroom v2** oleh tevy, CC0 1.0. Versi LOD0 ditranskode agar bisa diimpor ke Blender. [Sumber tevy](https://tevy.dev/models/classroom) · [CC0](https://creativecommons.org/publicdomain/zero/1.0/) |
+| IF 110 | Adaptasi model ruang yang sebelumnya dibuat dari referensi IF 101 tim. Ruang latihan berisi 24 kursi kayu, layar PPT, dan platform pengajar. [Model Blender](../assets/blender/NARA-IF-101.blend) · [Skrip pembuat ruang](../tools/nara_prepare_if101.py) |
+| Avatar dan potret | **Microsoft Rocketbox**, MIT. Paket ini memakai 30 model dari revisi yang dicatat pada manifest. [Lisensi dan manifest](../NARA/Assets/FinalProject/Characters/Rocketbox/SOURCE.md) |
+| Gerakan duduk audiens | Dua puluh rekaman dari pustaka animasi Microsoft Rocketbox, diolah dengan Blender menjadi lintasan tangan dan badan. [Asal dan adaptasi](../NARA/Assets/FinalProject/Characters/Rocketbox/SOURCE.md) · [Daftar rekaman dan skrip](../tools/nara_bake_seated_motion.py) |
+| Variasi angkat tangan, bicara, dan menyimak | Delapan belas klip Overte berlisensi Apache 2.0, termasuk variasi anggukan, lirikan, pergeseran duduk, dan penekanan singkat saat bicara. Skrip Blender mengekstrak lintasan tubuh atas dan mempertahankan titik awal tahan serta turun pada gerakan angkat tangan. [Daftar klip dan pengekspor](../tools/nara_bake_overte_motion.py) · [Sumber Overte](https://github.com/overte-org/overte/tree/4a289354634237b265f6be106da2df121cd67c54/interface/resources/avatar/animations) · [Lisensi](../NARA/Assets/StreamingAssets/ThirdParty/Overte-Apache-2.0.txt) · [Atribusi](../NARA/Assets/StreamingAssets/ThirdParty/Overte-NOTICE.txt) |
+| Variasi angkat tangan HY-Motion di build lokal | Satu klip HY-Motion 1.0 dari seed 0, dengan pengaturan 4,7 detik dan CFG 5. Blender memadukan ritme dan lintasan klip dengan pose duduk Overte yang sudah disesuaikan. Dua adaptasi tempo dipakai pada sisi kanan dan kiri. Data hasil ekspor dikecualikan dari Git. [Pengekspor Blender](../tools/nara_bake_hy_raises.py) · [Demo HY-Motion](https://huggingface.co/spaces/tencent/HY-Motion-1.0) · [Lisensi Tencent](https://huggingface.co/tencent/HY-Motion-1.0/blob/main/LICENSE.txt) |
+| Furnitur kelas universitas | Kelas universitas memakai meja trapesium, rangka baja, kaki karet, dan kursi kain dari model Blender tim. Lebar dan kedalaman meja disesuaikan agar empat baris muat. [Sumber Blender](../assets/blender/Meja-Kursi.blend) |
+| Podium dan monitor | Model Blender dengan panel oak, rangka grafit, permukaan baca miring, monitor slide, dan mikrofon. Serat kayu dibuat secara prosedural. [Skrip pembuat ruang](../tools/nara_prepare_classroom.py) |
+| Fon | Inter 4.1 Regular dan Bold dari The Inter Project Authors, SIL Open Font License 1.1. [Lisensi OFL](../NARA/Assets/FinalProject/Resources/Nara/Fonts/Inter-OFL.txt) · [Rilis upstream](https://github.com/rsms/inter/releases/tag/v4.1) |
+| WAV karakter | 30 profil sintetis bilingual dari Supertonic 3. Pemutar memakai bank WAV yang dibuat dari naskah NARA. [Naskah](../NARA/Assets/FinalProject/Resources/Nara/OfflineScript.json) · [Asal suara dan cara render](SUARA-KARAKTER.md) |
+
+[Catatan model ruang](../NARA/Assets/FinalProject/Environment/SOURCE.md) menjelaskan adaptasi geometri, proyeksi, dan asal tekstur.

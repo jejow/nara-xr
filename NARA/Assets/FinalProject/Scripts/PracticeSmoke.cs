@@ -669,6 +669,8 @@ namespace Nara.Practice
         {
             string topic = "Peminjaman sepeda kampus";
             const string summary = "Mahasiswa meminjam sepeda melalui kartu mahasiswa. Tim menguji dua stasiun selama tiga minggu.";
+            string expectedProvider = Environment.GetEnvironmentVariable("NARA_SMOKE_VOICE_PROVIDER");
+            bool requireProgressive = Environment.GetEnvironmentVariable("NARA_SMOKE_REQUIRE_STREAM") == "1";
             string input = Environment.GetEnvironmentVariable("NARA_SMOKE_PRESENTATION");
             if (!string.IsNullOrEmpty(input))
             {
@@ -735,6 +737,7 @@ namespace Nara.Practice
                 yield break;
             Debug.Log($"NARA_CAPTION_TIME first={Time.realtimeSinceStartup - started:F2}s");
             bool preparing = app.SpeechPending;
+            float grantedAt = Time.realtimeSinceStartup;
             app.GrantFloor();
             yield return new WaitForSecondsRealtime(.65f);
             if (preparing && app.SpeechPending)
@@ -749,6 +752,21 @@ namespace Nara.Practice
                 app.voice.clip != NaraPractice.VoiceClip(app.audience.ProfileAt(first), "question_1", "id"),
                 "first NPC plays generated speech for the live question"))
                 yield break;
+            Debug.Log($"NARA_VOICE_START first={app.VoiceStartedAt - grantedAt:F2}s provider={app.StreamVoiceProvider}");
+            if (!string.IsNullOrEmpty(expectedProvider) &&
+                !Check(app.StreamVoiceProvider == expectedProvider, "first NPC uses the expected streaming voice provider"))
+                yield break;
+            if (requireProgressive)
+            {
+                if (!Check(app.PlayingVoiceStream && app.SpeechPending && !app.CanReplay,
+                    "Unity plays the first PCM frames while the HTTP response is still open"))
+                    yield break;
+                float captionAtStart = app.SubtitleProgress;
+                yield return new WaitForSecondsRealtime(.22f);
+                if (!Check(app.PlayingVoiceStream && app.SubtitleProgress > captionAtStart,
+                    "the subtitle clock advances with streamed sample playback"))
+                    yield break;
+            }
             yield return Frame("live-question");
             yield return WaitForAnswer();
 
@@ -800,6 +818,19 @@ namespace Nara.Practice
             if (!Check(app.SpeakingSeat == app.HostSeat,
                 "live closing feedback is played by the host"))
                 yield break;
+            if (requireProgressive)
+            {
+                float finishedBy = Time.realtimeSinceStartup + 14f;
+                while (app.SpeakingSeat >= 0 && Time.realtimeSinceStartup < finishedBy)
+                    yield return null;
+                if (!Check(!app.SpeechPending && !app.PlayingVoiceStream && app.SpeakingSeat < 0 && app.CanReplay,
+                    "streamed playback drains and ends at the last PCM frame"))
+                    yield break;
+                app.Replay();
+                if (!Check(app.SpeakingSeat == app.HostSeat && !app.PlayingVoiceStream,
+                    "the completed voice can be replayed without another download"))
+                    yield break;
+            }
             Debug.Log("NARA_SMOKE PASS");
             Exit(0);
         }

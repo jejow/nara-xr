@@ -1,0 +1,39 @@
+{
+  "lines": [
+    {
+      "key": "intro",
+      "id": "Halo, aku {name}. Kita mulai saat kamu siap.",
+      "en": "Hi, I'm {name}. Let's get started when you're ready."
+    },
+    {
+      "key": "question_1",
+      "id": "Kalau diringkas, masalah apa yang mau kamu selesaikan, dan siapa yang paling merasakannya?",
+      "en": "In a sentence, what problem are you trying to solve, and who feels it most?"
+    },
+    {
+      "key": "question_2",
+      "id": "Kalau usulanmu dijalankan, tanda apa yang menunjukkan bahwa usulan itu berhasil?",
+      "en": "If your proposal goes ahead, what would tell you it's working?"
+    },
+    {
+      "key": "feedback",
+      "id": "Di latihan berikutnya, coba beri satu contoh tentang bagaimana usulanmu membantu pengguna.",
+      "en": "Next time, try giving one example of how your proposal helps the people who would use it."
+    },
+    {
+      "key": "connection",
+      "id": "Koneksi putus sebentar. Kita lanjut pakai pertanyaan yang sudah disiapkan.",
+      "en": "We lost the connection. Let's keep going with the questions we prepared."
+    },
+    {
+      "key": "timeout",
+      "id": "Jawabanmu belum masuk. Kita lanjut dengan latihan offline, ya.",
+      "en": "Your answer hasn't come through. Let's continue with the offline rehearsal."
+    },
+    {
+      "key": "unusable",
+      "id": "Aku belum menangkap jawabanmu. Coba ulangi dalam satu kalimat.",
+      "en": "I didn't catch that. Could you try again in one sentence?"
+    }
+  ]
+}
